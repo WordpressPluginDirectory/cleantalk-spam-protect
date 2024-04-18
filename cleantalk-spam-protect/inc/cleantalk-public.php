@@ -183,8 +183,10 @@ function apbct_init()
             add_action('woocommerce_checkout_update_order_meta', 'apbct_woocommerce__add_request_id_to_order_meta');
         }
 
-        //Woocommerce add_to_cart action
-        add_action('woocommerce_add_to_cart_validation', 'apbct_wc__add_to_cart_unlogged_user', 10, 6);
+        if ( ! apbct_is_user_logged_in() && $apbct->settings['forms__wc_add_to_cart'] ) {
+            //Woocommerce add_to_cart action
+            add_filter('woocommerce_add_to_cart_validation', 'apbct_wc__add_to_cart_unlogged_user', 10, 6);
+        }
     }
 
     // WooCommerce whishlist
@@ -1196,6 +1198,17 @@ function ct_print_form($arr, $k)
         $tmp = array();
         foreach ( $arr as $key => $val ) {
             $tmp_key       = str_replace('_', '+', $key);
+            $tmp[$tmp_key] = $val;
+        }
+        $arr = $tmp;
+        unset($tmp, $key, $tmp_key, $val);
+    }
+
+    // Fix for zoho forms with space in input attribute name
+    if ( isset($arr['actionType'], $arr['returnURL']) ) {
+        $tmp = array();
+        foreach ( $arr as $key => $val ) {
+            $tmp_key       = str_replace('_', ' ', $key);
             $tmp[$tmp_key] = $val;
         }
         $arr = $tmp;

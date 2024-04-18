@@ -2,9 +2,9 @@
 Contributors: glomberg, artemacleantalk, alexandergull
 Tags: spam, antispam, anti-spam, comments, firewall
 Requires at least: 4.7
-Tested up to: 6.4
+Tested up to: 6.5
 Requires PHP: 5.6
-Stable tag: 6.29
+Stable tag: 6.31
 License: GPLv2
 
 Spam protection, anti-spam, firewall, premium plugin. No spam comments & users, no spam contact form & WooCommerce anti-spam.
@@ -456,6 +456,46 @@ Yes, it is. Please read this article,
 12. SpamFireWall log.
 
 == Changelog ==
+
+= 6.31 Apr 18 2024
+* New. Integrations. Added ContactFormPlugin handler.
+* Upd. Integrations. Skip new action for Wordpress File Uploader.
+* Upd. Settings. Advanced setting info added.
+* Fix. Comments moderation. Do not auto-approve comments if license is expired.
+* Fix. Code. ES Lint github action fixed.
+* Fix. Code. General. Compatibility with php 8.2.
+* Fix. Integration. WooCommerce. Event token added and JS status fixed.
+* Fix. Integrations. Added statement for handling space in attribute name.
+* Fix. Integrations. Added handler for KadenceBlocks.
+* Fix. Integrations. Skip WP Fusion Abandoned Cart Addon service requests.
+* Fix. Integrations. Prevented multi request after send.
+* Fix. SFW update. Get only common lists on expired key.
+* Fix. SFW update. Fixed case when DirectUpdate type always calls if has been called once.
+* Ref. Code. Function ct_preprocess_comment refactored to integration class.
+* Ref. Code. External forms. Deleted unnecessary conditions.
+
+= 6.30 Apr 4 2024
+* New. Integration. Jobstack theme register form protection implemented.
+* Fix. Integration. Skip Pixelyoursite service action.
+* Fix. Settings. Fixed switcher for email encode.
+* Fix. Integration. Search form protection fixed.
+* Fix. Integration. Adding to cart protection fixed.
+* Fix. Integration. Elementor Pro. Event token gathering fixed.
+* Fix. Integration. External forms protection fixed.
+* Fix. Integration. Happy Forms integration fixed.
+* Fix. Integration. Prevented error on Ninja forms.
+* Fix. Integration. EasyDigitalDownload fixed.
+* Fix. Integration. Salesforce external form fixed.
+* Fix. Integrations. Catching js params on BuddyPress.
+* Fix. Integrations. Fluent booking. Fix localize script.
+* Fix. Code. Removed redundant parameter `source` from `private_list_add` handler method.
+* Fix. Code. Add default key to debug call.
+* Fix. Code. JS. Core.attr fixed.
+* Fix. Code. Added eslint-windows npm script to run eslint on windows systems.
+* Ref. ApbctSFW. Switch to direct update logic.
+
+= 6.29.1 Mar 26 2024
+Fix. Cookies. Alternative cookies set fixed.
 
 = 6.29 Mar 14 2024
 New. Integration. BookingPress integration.

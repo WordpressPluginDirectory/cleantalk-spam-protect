@@ -4,7 +4,7 @@
   Plugin Name: Anti-Spam by CleanTalk
   Plugin URI: https://cleantalk.org
   Description: Max power, all-in-one, no Captcha, premium anti-spam plugin. No comment spam, no registration spam, no contact spam, protects any WordPress forms.
-  Version: 6.29
+  Version: 6.31
   Author: СleanTalk - Anti-Spam Protection <welcome@cleantalk.org>
   Author URI: https://cleantalk.org
   Text Domain: cleantalk-spam-protect
@@ -312,6 +312,12 @@ $apbct_active_integrations = array(
         'setting' => 'forms__check_internal',
         'ajax'    => true
     ),
+    'CleantalkPreprocessComment'         => array(
+        'hook'    => 'preprocess_comment',
+        'setting' => 'forms__comments_test',
+        'ajax'    => true,
+        'ajax_and_post' => true
+    ),
     'ContactBank'         => array(
         'hook'    => 'contact_bank_frontend_ajax_call',
         'setting' => 'forms__contact_forms_test',
@@ -569,6 +575,21 @@ $apbct_active_integrations = array(
         'setting' => 'forms__contact_forms_test',
         'ajax'    => true
     ),
+    'JobstackThemeRegistration' => array(
+        'hook'    => 'wp_loaded',
+        'setting' => 'forms__registrations_test',
+        'ajax'    => false
+    ),
+    'ContactFormPlugin' => array(
+        'hook'    => 'cntctfrm_check_form',
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => false
+    ),
+    'KadenceBlocks' => array(
+        'hook'    => 'kb_process_ajax_submit',
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => true
+    ),
 );
 new  \Cleantalk\Antispam\Integrations($apbct_active_integrations, (array)$apbct->settings);
 
@@ -732,6 +753,7 @@ add_filter('wpforo_create_profile', 'wpforo_create_profile__check_register', 1, 
 
 // HappyForms integration
 add_filter('happyforms_validate_submission', 'apbct_form_happyforms_test_spam', 1, 3);
+add_filter('happyforms_use_hash_protection', '__return_false');
 
 // WPForms
 // Adding fields
@@ -970,7 +992,7 @@ if ( is_admin() || is_network_admin() ) {
     add_action('plugins_loaded', 'apbct_init', 1);
 
     // Comments
-    add_filter('preprocess_comment', 'ct_preprocess_comment', 1, 1);     // param - comment data array
+    //add_filter('preprocess_comment', 'ct_preprocess_comment', 1, 1);     // param - comment data array
     add_filter('comment_text', 'ct_comment_text');
     add_filter('wp_die_handler', 'apbct_comment__sanitize_data__before_wp_die', 1); // Check comments after validation
 
@@ -1284,18 +1306,12 @@ function apbct_sfw_update__init($delay = 0)
 
     $wp_upload_dir = wp_upload_dir();
     $apbct->fw_stats['updating_folder'] = $wp_upload_dir['basedir'] . DIRECTORY_SEPARATOR . 'cleantalk_fw_files_for_blog_' . get_current_blog_id() . DIRECTORY_SEPARATOR;
+    //update only common tables if moderate 0
+    if ( ! $apbct->moderate ) {
+        $apbct->data['sfw_load_type'] = 'common';
+    }
 
-    $prepare_dir__result = SFWUpdateHelper::prepareUpdDir();
-    $test_rc_result = Helper::httpRequestRcToHostTest(
-        'sfw_update__worker',
-        array(
-            'spbc_remote_call_token' => md5($apbct->api_key),
-            'spbc_remote_call_action' => 'sfw_update__worker',
-            'plugin_name' => 'apbct'
-        )
-    );
-
-    if ( defined('APBCT_SFW_FORCE_DIRECT_UPDATE') || ! empty($prepare_dir__result['error']) || ! empty($test_rc_result['error']) ) {
+    if (apbct_sfw_update__switch_to_direct()) {
         return SFWUpdateHelper::directUpdate();
     }
 
@@ -1339,6 +1355,51 @@ function apbct_sfw_update__init($delay = 0)
         ),
         array('async')
     );
+}
+
+/**
+ * Decide need to force direct update
+ *
+ * @return bool
+ * @psalm-suppress NullArgument
+ */
+function apbct_sfw_update__switch_to_direct()
+{
+    global $apbct;
+
+    $apbct->fw_stats['reason_direct_update_log'] = null;
+
+    if (defined('APBCT_SFW_FORCE_DIRECT_UPDATE')) {
+        $apbct->fw_stats['reason_direct_update_log'] = 'const APBCT_SFW_FORCE_DIRECT_UPDATE exists';
+        return true;
+    }
+
+    $prepare_dir__result = SFWUpdateHelper::prepareUpdDir();
+    if (!empty($prepare_dir__result['error'])) {
+        $apbct->fw_stats['reason_direct_update_log'] = 'variable prepare_dir__result has error';
+        return true;
+    }
+
+    $test_rc_result = Helper::httpRequestRcToHostTest(
+        'sfw_update__worker',
+        array(
+            'spbc_remote_call_token' => md5($apbct->api_key),
+            'spbc_remote_call_action' => 'sfw_update__worker',
+            'plugin_name' => 'apbct'
+        )
+    );
+    if (!empty($test_rc_result['error'])) {
+        $apbct->fw_stats['reason_direct_update_log'] = 'test remote call has error';
+        return true;
+    }
+
+    if (isset($apbct->fw_stats['firewall_updating_last_start'], $apbct->stats['sfw']['update_period']) &&
+    ((int)$apbct->fw_stats['firewall_updating_last_start'] + (int)$apbct->stats['sfw']['update_period'] + 3600) < time()) {
+        $apbct->fw_stats['reason_direct_update_log'] = 'general update is freezing';
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -2064,8 +2125,7 @@ function apbct_sfw_private_records_handler($action, $test_data = null)
             $metadata_assoc_array = array(
                 'network' => (int)$row[0],
                 'mask' => (int)$row[1],
-                'status' => isset($row[2]) ? (int)$row[2] : null,
-                'source' => isset($row[3]) ? (int)$row[3] : null
+                'status' => isset($row[2]) ? (int)$row[2] : null
             );
             //validate
             $validation_error = '';
@@ -2081,10 +2141,6 @@ function apbct_sfw_private_records_handler($action, $test_data = null)
             }
             //only for adding
             if ( $action === 'add' ) {
-                if ( $metadata_assoc_array['source'] !== 1
-                ) {
-                    $validation_error = 'metadata validate failed on "source" value';
-                }
                 if ( $metadata_assoc_array['status'] !== 1 && $metadata_assoc_array['status'] !== 0 ) {
                     $validation_error = 'metadata validate failed on "status" value';
                 }
