@@ -4,7 +4,7 @@ Tags: spam, antispam, anti-spam, comments, firewall
 Requires at least: 4.7
 Tested up to: 6.7
 Requires PHP: 5.6
-Stable tag: 6.45.2
+Stable tag: 6.47
 License: GPLv2
 
 Spam protection, anti-spam, firewall, premium plugin. No spam comments & users, no spam contact form & WooCommerce anti-spam.
@@ -37,6 +37,7 @@ Top-rated anti-spam protection for WordPress. No CAPTCHA, no questions, no anima
 21. Hide «Website» field for comments.
 22. Block messages by languages, countries, networks and stop words.
 23. Email Address Encoder - protection for email addresses published on your site.
+24. No jQuery.
 
 = Free trial then $12 per year =
 CleanTalk is an anti-spam plugin which works with the premium Cloud Anti-Spam service cleantalk.org. This plugin as a service <a href="https://developer.wordpress.org/plugins/wordpress-org/detailed-plugin-guidelines/#6-software-as-a-service-is-permitted">https://developer.wordpress.org/plugins/wordpress-org/detailed-plugin-guidelines/#6-software-as-a-service-is-permitted</a>
@@ -433,16 +434,48 @@ Yes, it is. Please read this article,
 1. AntiSpam settings are easy to use to protect any contact forms. For example - Ninja forms, Fluent forms and etc.
 2. AntiSpam plugin rejected a spam bot at the CAPTCHA less registration form. The plugin provides explanation to visitor and websites about each rejected comment/registration or contact message.
 3. Use AntiSpam analytics tool for each website in service Dashboard to have information about spam/legitimate stats.
-4. Use AntiSpam log to control anti-spam plugin.
-5. CleanTalk works faster than most of other anti-spam plugins.
-6. The Dashboard with a map of most spam active countries per your account.
-7. The plugin deletes/removes the existing spam comments and users accounts.
-8. CleanTalk's dashboard update link.
-10. Website's options.
-11. CleanTalk's dashboard.
-12. SpamFireWall log.
+4. Special interface to find spam comments.
+5. Special interface to find spammers in users.
+6. Prevent WooCommerce checkout from spammers.
+7. Prevent spam contact occurs in your life.
+8. Prevent any other spamers, from any other forms, for example from WPForms.
 
 == Changelog ==
+
+= 6.47 18 Dec 2024 =
+* New. Form decoration. Holiday form decoration option added.
+* New. JSLibrary. Bot detector log collecting.
+* New. Integrations. Sendpulse 3rd party service integration implemented.
+* New. Integrations. Added SeedConfirmationPro.
+* Upd. EmailEncoder. Remember hook decoding.
+* Upd. Settings. Updated logic to clear old sessions data.
+* Upd. Integrations. Updated EmailEncoder to integrate Business Directory.
+* Upd. EmailEncoder. Fixed warning occurs on plugin delete action.
+* Upd. EmailEncoder. Improved work to handle seldom cases.
+* Upd. Integrations. Refactoring BuddyPress handler.
+* Upd. Code. Improved clean old session data handler.
+* Mod. Bot Detector. Library JS script load strategy set to "defer".
+* Fix. Integrations. WooCommerce checkout during REST protection fixed.
+* Fix. External forms. External forms catching fixed.
+* Fix. External forms. ConvertKit integration fixed.
+* Fix. UniBanner. Edit access to a variable.
+
+= 6.46 27 Nov 2024 =
+* New. Integrations. CoBlocks integration implemented.
+* New. EmailEncoder. A new hook for encoding mail
+* Upd. TheRealPerson. Update layout.
+* Upd. Code. Psalm L3. Updated codebase
+* Upd. Integrations. Breeze cache plugin integration implemented.
+* Upd. Code. Refactoring honeypot logic.
+* Upd. TRP. Improved adaptive.
+* Upd. Integrations. Added fibosearch support.
+* Fix. Integrations. Ninja forms getting form fields fixed.
+* Fix. TRP. Popup text color fixed.
+* Fix. Email encoder. Decoding blur-magic rebuilt.
+* Fix. Integrations. Exclusion of the Elementor search form
+* Fix. Integrations. Regex to exclude search forms
+* Fix. EmailEncoder. Handling exceptions and logged-in users
+* Fix. EmailEncoder. Exclusion of maps from leaflet
 
 = 6.45.2 19 Nov 2024 =
 * Fix. Settings. Fixed banners close handler.

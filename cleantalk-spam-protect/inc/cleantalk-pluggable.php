@@ -1199,7 +1199,10 @@ function apbct_is_skip_request($ajax = false)
 
         // skip masteriyo_login LMS
         if (
-            apbct_is_plugin_active('learning-management-system/lms.php') &&
+            (
+                apbct_is_plugin_active('learning-management-system/lms.php') ||
+                apbct_is_plugin_active('learning-management-system-pro/lms.php')
+            ) &&
             Post::get('action') === 'masteriyo_login'
         ) {
             return 'masteriyo_login LMS';
@@ -1227,21 +1230,26 @@ function apbct_is_skip_request($ajax = false)
             return 'Broken Link Notifier service action';
         }
 
-        // skip WP Rocket image dimensions
+        // skip WP Rocket service requests
         if (
             apbct_is_plugin_active('wp-rocket/wp-rocket.php') &&
             (
                 Get::get('wpr_imagedimensions') ||
-                Post::get('wpr_imagedimensions')
+                Post::get('wpr_imagedimensions') ||
+                Post::get('action') === 'rocket_beacon'
             )
         ) {
-            return 'WP Rocket image dimensions';
+            return 'WP Rocket service requests';
         }
         // skip Check email before POST request
         if (
                 Post::get('action') === 'apbct_email_check_exist_post'
         ) {
             return 'apbct_email_check_exist_post_skip';
+        }
+        // BuddyPress has the direct integration
+        if ( apbct_is_plugin_active('buddypress/bp-loader.php') && Post::get('action') === 'messages_send_message' ) {
+            return 'buddypress_messages_send_message';
         }
     } else {
         /*****************************************/
@@ -1451,6 +1459,14 @@ function apbct_is_skip_request($ajax = false)
             Post::get('action') === 'edit_profile'
         ) {
             return 'Plugin Name: Profile Builder; ajax action wppb_conditional_logic';
+        }
+
+        // CoBlocks. The plugin have the direct integration
+        if (
+            apbct_is_plugin_active('coblocks/class-coblocks.php') &&
+            TT::toString(Post::get('action')) === 'coblocks-form-submit'
+        ) {
+            return 'Plugin Name: CoBlocks - have the direct integration';
         }
     }
 

@@ -162,6 +162,7 @@ function apbct_init()
         }
         if ( $apbct->settings['forms__wc_checkout_test'] == 1 ) {
             add_action('woocommerce_after_checkout_validation', 'ct_woocommerce_checkout_check', 1, 2);
+            add_action('woocommerce_store_api_checkout_order_processed', 'ct_woocommerce_checkout_check_from_rest', 1, 1);
             add_action('woocommerce_checkout_update_order_meta', 'apbct_woocommerce__add_request_id_to_order_meta');
             add_action('woocommerce_store_api_checkout_update_customer_from_request', 'apbct_wc_store_api_checkout_update_customer_from_request', 10, 2);
         }
@@ -221,14 +222,6 @@ function apbct_init()
             return false;
         }, 999, 2);
         add_action('wpcf7_before_send_mail', 'apbct_form__contactForm7__testSpam', 999);
-    }
-
-    // BuddyPress
-    if ( class_exists('BuddyPress') ) {
-        add_action('bp_before_registration_submit_buttons', 'ct_register_form', 1);
-        add_action('messages_message_before_save', 'apbct_integration__buddyPres__private_msg_check', 1);
-        add_filter('bp_signup_validate', 'ct_registration_errors', 1);
-        add_filter('bp_signup_validate', 'ct_check_registration_errors', 999999);
     }
 
     if ( defined('PROFILEPRESS_SYSTEM_FILE_PATH') ) {
@@ -683,72 +676,6 @@ function ct_add_hidden_fields(
             )
         );
     }
-}
-
-/**
- * Returns HTML of a honeypot hidden field to the form. If $form_method is GET, adds a hidden submit button.
- * @param $form_type
- * @param string $form_method
- * @return string
- */
-function ct_add_honeypot_field($form_type, $form_method = 'post')
-{
-    global $apbct;
-
-    // Honeypot option is OFF
-    if ( ! $apbct->settings['data__honeypot_field'] || apbct_exclusions_check__url() || apbct_is_amp_request()) {
-        return '';
-    }
-
-    //Generate random suffix to prevent ids duplicate
-    $apbct_event_id = mt_rand(0, 100000);
-
-    //field label (preventing validators warning)
-    $label = '<label ' .
-        'class="apbct_special_field" ' .
-        'id="apbct_label_id' . $apbct_event_id . '" ' .
-        'for="apbct__email_id__' . $form_type . '_' . $apbct_event_id . '"' .
-        '>' . $apbct_event_id . '</label>';
-
-    // Generate the honeypot trap input
-    $honeypot = $label . '<input 
-        id="apbct__email_id__' . $form_type . '_' . $apbct_event_id . '" 
-        class="apbct_special_field apbct__email_id__' . $form_type . '"
-        autocomplete="off" 
-        name="apbct__email_id__' . $form_type . '_' . $apbct_event_id . '"  
-        type="text" 
-        value="' . $apbct_event_id . '" 
-        size="30" 
-        apbct_event_id="' . $apbct_event_id . '"
-        maxlength="200" 
-    />';
-
-    //if POST, add a hidden input to transfer apbct_event_id to the form data
-    if ( $form_method === 'post' ) {
-        //add hidden field to set random suffix for the field
-        $honeypot .= '<input 
-        id="apbct_event_id_' . $form_type . '_' . $apbct_event_id . '"
-        class="apbct_special_field"
-        name="apbct_event_id"
-        type="hidden" 
-        value="' . $apbct_event_id . '" 
-            />';
-    }
-
-    //if GET, place a submit button if method is get to prevent keyboard send misfunction
-    if ( $form_method === 'get' ) {
-        $honeypot .= '<input 
-        id="apbct_submit_id__' . $form_type . '_' . $apbct_event_id . '" 
-        class="apbct_special_field apbct__email_id__' . $form_type . '"
-        name="apbct_submit_id__' . $form_type . '_' . $apbct_event_id . '"  
-        type="submit" 
-        size="30" 
-        maxlength="200" 
-        value="' . $apbct_event_id . '" 
-    />';
-    }
-
-    return $honeypot;
 }
 
 /**
@@ -1309,23 +1236,6 @@ function ct_enqueue_scripts_public($_hook)
             ));
         }
     }
-
-    // Debug
-    if ( $apbct->settings['misc__debug_ajax'] ) {
-        wp_enqueue_script(
-            'ct_debug_js',
-            APBCT_JS_ASSETS_PATH . '/cleantalk-debug-ajax.min.js',
-            // keep this jquery dependency if option misc__debug_ajax is enabled
-            array('jquery'),
-            APBCT_VERSION,
-            false /*in header*/
-        );
-
-        wp_localize_script('ct_debug_js', 'apbctDebug', array(
-            'reload'      => false,
-            'reload_time' => 10000,
-        ));
-    }
 }
 
 function ct_enqueue_styles_public()
@@ -1377,8 +1287,20 @@ function ct_enqueue_styles_public()
             }
         }
     }
+    if ( $apbct->settings['comments__the_real_person'] ) {
+        wp_enqueue_style(
+            'ct_trp_public',
+            APBCT_CSS_ASSETS_PATH . '/cleantalk-trp.min.css',
+            array(),
+            APBCT_VERSION
+        );
+    }
 }
 
+/**
+ * @return void
+ * @psalm-suppress InvalidArgument - wp_enqueue_script() does not await bool as psalm predicts, array values are allowed
+ */
 function apbct_enqueue_and_localize_public_scripts()
 {
     global $apbct;
@@ -1401,7 +1323,10 @@ function apbct_enqueue_and_localize_public_scripts()
             'https://moderate.cleantalk.org/ct-bot-detector-wrapper.js',
             [],
             APBCT_VERSION,
-            $in_footer
+            array(
+                'in_footer' => $in_footer,
+                'strategy' => 'defer'
+                )
         );
     }
 

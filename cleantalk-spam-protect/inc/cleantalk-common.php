@@ -10,6 +10,7 @@ use Cleantalk\ApbctWP\DB;
 use Cleantalk\ApbctWP\Firewall\SFW;
 use Cleantalk\ApbctWP\GetFieldsAny;
 use Cleantalk\ApbctWP\Helper;
+use Cleantalk\ApbctWP\Honeypot;
 use Cleantalk\ApbctWP\Sanitize;
 use Cleantalk\ApbctWP\Variables\AltSessions;
 use Cleantalk\ApbctWP\Variables\Cookie;
@@ -201,6 +202,10 @@ function apbct_base_call($params = array(), $reg_flag = false)
         $default_params['sender_info']['typo'] = Cookie::get('typo');
     }
 
+    if (Cookie::get('form_decoration_mouse_data')) {
+        $default_params['sender_info']['form_decoration_mouse_data'] = Cookie::get('form_decoration_mouse_data');
+    }
+
     /**
      * Add exception_action sender email is empty
      */
@@ -224,29 +229,16 @@ function apbct_base_call($params = array(), $reg_flag = false)
         return array('ct_result' => new CleantalkResponse());
     }
 
-    /**
-     * Add honeypot_field to $base_call_data if forms__wc_honeypot on
-     * --------------------------------------------------------------
-     * Description:
-     * $params['honeypot_field'] = 0 - means that honeypot field is dirty (was updated by bot)
-     * $params['honeypot_field'] = 1 - means that honeypot field is clean (was not updated by bot)
-     * $params['honeypot_field'] = null - means that honeypot field is not supported for current form
-     * --------------------------------------------------------------
-     */
+    // Honeypot
     if ( isset($params['honeypot_field']) ) {
         $default_params['honeypot_field'] = $params['honeypot_field'];
     } else if ( $apbct->settings['data__honeypot_field'] ) {
-        $honeypot_filled_fields = apbct_get_honeypot_filled_fields();
-        if ( isset($honeypot_filled_fields) ) {
-            $params['honeypot_field'] = ! (bool) $honeypot_filled_fields;
-        } else {
-            $params['honeypot_field'] = null;
-        }
+        $honeypot = Honeypot::check();
+        $params['honeypot_field'] = isset($honeypot['status']) ? $honeypot['status'] : null;
 
-        if ( isset($honeypot_filled_fields['field_value'], $honeypot_filled_fields['field_source'], $params['sender_info']) ) {
-            $params['sender_info']['honeypot_field_value'] = $honeypot_filled_fields['field_value'];
-            $params['sender_info']['honeypot_field_source'] = $honeypot_filled_fields['field_source'];
-            $params['honeypot_field'] = 0;
+        if ( isset($honeypot['value'], $honeypot['source'], $params['sender_info']) ) {
+            $params['sender_info']['honeypot_field_value'] = $honeypot['value'];
+            $params['sender_info']['honeypot_field_source'] = $honeypot['source'];
         }
     }
 
@@ -551,6 +543,12 @@ function apbct_get_sender_info()
     $site_landing_ts = RequestParameters::get('apbct_site_landing_ts', true);
     $site_landing_ts = !empty($site_landing_ts) ? TT::toString($site_landing_ts) : null;
 
+    $site_referer = RequestParameters::get('apbct_site_referer', true);
+    $site_referer = !empty($site_referer) ? TT::toString($site_referer) : null;
+
+    $page_hits = RequestParameters::get('apbct_page_hits', true);
+    $page_hits = !empty($page_hits) ? TT::toString($page_hits) : null;
+
     //Let's keep $data_array for debugging
     $data_array = array(
         'plugin_request_id'         => $apbct->plugin_request_id,
@@ -569,12 +567,12 @@ function apbct_get_sender_info()
         'cookies_enabled'           => $cookie_is_ok,
         'data__set_cookies'         => $apbct->settings['data__set_cookies'],
         'data__cookies_type'        => $apbct->data['cookies_type'],
-        'REFFERRER'                 => Cookie::$force_alt_cookies_global ? Cookie::get('apbct_site_referer') : Server::get('HTTP_REFERER'),
+        'REFFERRER'                 => Cookie::$force_alt_cookies_global ? $site_referer : Server::get('HTTP_REFERER'),
         'REFFERRER_PREVIOUS'        => Cookie::get('apbct_prev_referer') && $cookie_is_ok
             ? Cookie::get('apbct_prev_referer')
             : null,
         'site_landing_ts'           => $site_landing_ts,
-        'page_hits'                 => Cookie::get('apbct_page_hits') ?: null,
+        'page_hits'                 => $page_hits,
         'mouse_cursor_positions'    => $param_mouse_cursor_positions,
         'js_timezone'               => Cookie::get('ct_timezone') ?: null,
         'key_press_timestamp'       => Cookie::get('ct_fkp_timestamp') ?: null,
@@ -592,7 +590,7 @@ function apbct_get_sender_info()
             ? $visible_fields['invisible_fields']
             : null,
         // Misc
-        'site_referer'              => Cookie::get('apbct_site_referer') ?: null,
+        'site_referer'              => $site_referer,
         'source_url'                => $apbct_urls,
         'pixel_url'                 => $param_pixel_url,
         'pixel_setting'             => $apbct->settings['data__pixel'],
@@ -625,8 +623,10 @@ function apbct_get_sender_info()
             ? json_encode(Cookie::get('ct_has_input_focused'))
             : null,
         'cache_plugins_detected' => $cache_plugins_detected,
+        //bot detector data
         'bot_detector_fired_form_exclusions' => apbct__bot_detector_get_fired_exclusions(),
         'bot_detector_prepared_form_exclusions' => apbct__bot_detector_get_prepared_exclusion(),
+        'bot_detector_frontend_data_log' => apbct__bot_detector_get_fd_log(),
     );
 
     // Unset cookies_enabled from sender_info if cookies_type === none
@@ -812,10 +812,12 @@ function ct_get_checkjs_value()
 
 function apbct_is_cache_plugins_exists($return_names = false)
 {
+    global $apbct;
+
     $out = array();
 
     $constants_of_cache_plugins = array(
-        'WP_ROCKET_VERSION'                          => 'WPRocket',
+        'WP_ROCKET_VERSION'                           => 'WPRocket',
         'LSCWP_DIR'                                   => 'LiteSpeed Cache',
         'WPFC_WP_CONTENT_BASENAME'                    => 'WP Fastest Cache',
         'W3TC'                                        => 'W3 Total Cache',
@@ -828,6 +830,8 @@ function apbct_is_cache_plugins_exists($return_names = false)
         'NITROPACK_VERSION'                           => 'NitroPack',
         'TWO_PLUGIN_FILE'                             => '10Web Booster',
         'FLYING_PRESS_VERSION'                        => 'Flying Press',
+        'BREEZE_VERSION'                              => 'Breeze',
+        'SPEEDYCACHE_VERSION'                         => 'SpeedyCache',
     );
 
     $classes_of_cache_plugins = array (
@@ -1147,13 +1151,6 @@ function ct_get_fields_any_postdata($arr, $message = array())
     return $message;
 }
 
-function cleantalk_debug($key, $value)
-{
-    if ( Cookie::get('cleantalk_debug')) {
-        @header($key . ": " . $value);
-    }
-}
-
 /**
  * Function changes CleanTalk result object if an error occurred.
  * @return object
@@ -1215,7 +1212,6 @@ function apbct_add_async_attribute($tag, $handle)
     $scripts_handles_names = array(
         'ct_public',
         'ct_public_functions',
-        'ct_debug_js',
         'ct_public_admin_js',
         'ct_internal',
         'ct_external',
@@ -1397,79 +1393,6 @@ function apbct_need_to_process_unknown_post_request()
 
     return false;
 }
-
-/**
- * Handles gained POST and GET data to find filled honeypot fields.
- * @return array|false|null
- * - array [honeypot_field_value, honeypot_field_source] if we have filled field,
- * - null if we have not
- * - false if POST has no honeypot signs
- */
-function apbct_get_honeypot_filled_fields()
-{
-    global $apbct;
-    $apbct_event_id = $honeypot_exists = false;
-    $result = array();
-
-    /**
-     * POST forms
-     */
-
-    $honeypot_potential_values = array();
-
-    if ( ! empty($_POST) ) {
-        //get field suffix for POST forms
-        $apbct_event_id = TT::toString(Post::get('apbct_event_id'));
-        // collect probable sources
-        $honeypot_potential_values = array(
-            'wc_apbct_email_id' =>                  Post::get('wc_apbct_email_id_' . $apbct_event_id),
-            'apbct__email_id__wp_register' =>       Post::get('apbct__email_id__wp_register_' . $apbct_event_id),
-            'apbct__email_id__wp_contact_form_7' => Post::get('apbct__email_id__wp_contact_form_7_' . $apbct_event_id),
-            'apbct__email_id__wp_wpforms' =>        Post::get('apbct__email_id__wp_wpforms_' . $apbct_event_id),
-            'apbct__email_id__gravity_form' =>      Post::get('apbct__email_id__gravity_form_' . $apbct_event_id),
-            'apbct__email_id__elementor_form' =>    Post::get('apbct__email_id__elementor_form_' . $apbct_event_id)
-        );
-    }
-
-    //AltSessions way to collect search forms honeypot
-    if ( $apbct->settings['forms__search_test'] ) {
-        $alt_search_event_id = AltSessions::get("apbct_search_form__honeypot_id");
-        $alt_search_value = AltSessions::get("apbct_search_form__honeypot_value");
-        if ( $alt_search_event_id && $alt_search_value ) {
-            $honeypot_potential_values['apbct__email_id__search_form'] = $alt_search_value;
-        }
-    }
-
-    /**
-     * Handle potential values
-     */
-
-    // if source is filled then pass them to params as additional fields
-    if ( ! empty($honeypot_potential_values) ) {
-        foreach ( $honeypot_potential_values as $source_name => $source_value ) {
-            if ( $source_value ) {
-                $honeypot_exists = true;
-                // use the apbct_event_id from search if form is search form
-                $apbct_event_id = $source_name === 'apbct__email_id__search_form'
-                    ? (isset($alt_search_event_id) ? $alt_search_event_id : $apbct_event_id)
-                    : $apbct_event_id;
-                // detect only values that is not equal to apbct_event_id
-                if ( $source_value !== $apbct_event_id ) {
-                    $result['field_value'] = $source_value;
-                    $result['field_source'] = $source_name;
-                    break;
-                }
-            }
-        }
-    }
-
-    if ( ! $honeypot_exists ) {
-        return null;
-    }
-
-    return empty($result) ? false : $result;
-}
-
 
 /**
  * Recursive. Check all post data for ct_no_cookie_hidden_field data.
@@ -1858,6 +1781,48 @@ function apbct__bot_detector_get_prepared_exclusion()
 function apbct__bot_detector_get_fired_exclusions()
 {
     return Cookie::get('ct_bot_detector_form_exclusion');
+}
+
+/**
+ * Return bot detector frontend data log from Alt Sessions if data found.
+ * Format: JSON.
+ *
+ * @return string JSON encoded bot detector frontend data log.
+ */
+function apbct__bot_detector_get_fd_log()
+{
+    global $apbct;
+    $result = array(
+        'plugin_status' => 'OK',
+        'error_msg' => '',
+        'frontend_data_log' => ''
+    );
+    // Initialize result array with default values
+
+    try {
+        if ( TT::toString($apbct->settings['data__bot_detector_enabled']) === '0') {
+            throw new \Exception('bot detector library usage is disabled');
+        }
+        // Retrieve bot detector frontend data log from Alt Sessions
+        $alt_sessions_fd_log = AltSessions::get('ct_bot_detector_frontend_data_log');
+        // Check if the retrieved data is a string
+        if ( !is_string($alt_sessions_fd_log) || '' === $alt_sessions_fd_log ) {
+            throw new \Exception('no log found in alt sessions');
+        }
+        // Encode the retrieved data to JSON format
+        $param_bot_detector_fd_log = json_decode($alt_sessions_fd_log, true);
+        // Check if the JSON encoding was successful
+        if ( empty($param_bot_detector_fd_log) ) {
+            throw new \Exception('can not decode data from alt sessions');
+        }
+    } catch (Exception $e) {
+        $result['plugin_status'] = 'ERROR';
+        $result['error_msg'] = $e->getMessage();
+        return json_encode($result);
+    }
+    $result['frontend_data_log'] = $param_bot_detector_fd_log;
+    // Return the result as a JSON encoded string
+    return json_encode($result);
 }
 
 function apbct__bot_detector_get_custom_exclusion_from_settings()
