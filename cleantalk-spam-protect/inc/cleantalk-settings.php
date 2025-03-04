@@ -2,6 +2,7 @@
 
 use Cleantalk\ApbctWP\AdjustToEnvironmentModule\AdjustToEnvironmentHandler;
 use Cleantalk\ApbctWP\AdjustToEnvironmentModule\AdjustToEnvironmentSettings;
+use Cleantalk\ApbctWP\AJAXService;
 use Cleantalk\ApbctWP\Antispam\EmailEncoder;
 use Cleantalk\ApbctWP\Escape;
 use Cleantalk\ApbctWP\FormDecorator\DecorationRegistry;
@@ -2559,7 +2560,7 @@ function apbct_settings__validate($settings)
 function apbct_settings__sync($direct_call = false)
 {
     if ( ! $direct_call ) {
-        check_ajax_referer('ct_secret_nonce');
+        AJAXService::checkAdminNonce();
     }
 
     global $apbct;
@@ -2687,7 +2688,7 @@ function apbct_settings__sync($direct_call = false)
 function apbct_settings__get_key_auto($direct_call = false)
 {
     if ( ! $direct_call ) {
-        check_ajax_referer('ct_secret_nonce');
+        AJAXService::checkAdminNonce();
     }
 
     global $apbct;
@@ -2739,6 +2740,12 @@ function apbct_settings__get_key_auto($direct_call = false)
             'success' => true,
             'reload'  => false,
             'error' => isset($result['error_message']) ? esc_html($result['error_message']) : esc_html($result['error'])
+        );
+    } elseif (isset($result['error_no']) && $result['error_no'] == '403') {
+        $out = array(
+            'success' => true,
+            'reload'  => false,
+            'error' => __('Our service is not available in your region.', 'cleantalk-spam-protect'),
         );
     } elseif ( ! isset($result['auth_key']) ) {
         //HANDLE LINK
@@ -2793,7 +2800,7 @@ function apbct_settings__update_account_email()
 {
     global $apbct;
 
-    apbct__check_admin_ajax_request('_ajax_nonce');
+    AJAXService::checkNonceRestrictingNonAdmins('_ajax_nonce');
 
     $account_email = Post::get('accountEmail');
 
@@ -2945,7 +2952,7 @@ function apbct_settings__sanitize__exclusions($exclusions, $regexp = false, $url
 function apbct_settings__get__long_description()
 {
     global $apbct;
-    check_ajax_referer('ct_secret_nonce');
+    AJAXService::checkAdminNonce();
 
     $setting_id = TT::toString(Post::get('setting_id', null, 'word'));
 
@@ -3095,7 +3102,7 @@ function apbct_settings__check_renew_banner()
 {
     global $apbct;
 
-    check_ajax_referer('ct_secret_nonce');
+    AJAXService::checkAdminNonce();
 
     die(
         json_encode(

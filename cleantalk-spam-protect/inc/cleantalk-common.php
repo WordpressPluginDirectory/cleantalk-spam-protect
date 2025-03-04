@@ -650,15 +650,7 @@ function apbct_sender_info___get_page_url()
     return  $protocol . TT::toString(Server::get('SERVER_NAME')) . TT::toString(Server::get('REQUEST_URI'));
 }
 
-/*
- * Outputs JS key for AJAX-use only. Stops script.
- */
-function apbct_js_keys__get__ajax()
-{
-    die(json_encode(array('js_key' => ct_get_checkjs_value())));
-}
-
-function apbct_get_pixel_url__ajax($direct_call = false)
+function apbct_get_pixel_url($direct_call = false)
 {
     global $apbct;
 
@@ -750,8 +742,6 @@ function apbct_force_protection_check_bot()
 /**
  * Get ct_get_checkjs_value
  *
- * @param bool $random_key
- *
  * @return int|string|null
  */
 function ct_get_checkjs_value()
@@ -821,8 +811,6 @@ function ct_get_checkjs_value()
 
 function apbct_is_cache_plugins_exists($return_names = false)
 {
-    global $apbct;
-
     $out = array();
 
     $constants_of_cache_plugins = array(
@@ -1647,34 +1635,72 @@ function apbct_rc__service_template_set($template_id, array $options_template_da
 }
 
 /**
- * Remove CleanTalk service data from super global variables
+ * Remove CleanTalk service data from super global variables.
+ * Attention! This function should be called after(!) CleanTalk request processing.
  * @param array $superglobal $_POST | $_REQUEST
  * @param string $type post|request
- * @return array cleared array of superglobal
+ * @return array cleared array of super global
  */
 function apbct_clear_superglobal_service_data($superglobal, $type)
 {
+    $fields_to_clear = array(
+        'apbct_visible_fields',
+    );
+
+    $cleared_superglobal = $superglobal;
+
     switch ($type) {
         case 'post':
-            // It is a service field. Need to be deleted before the processing.
-            if ( isset($superglobal['apbct_visible_fields']) ) {
-                unset($superglobal['apbct_visible_fields']);
+            //Magnesium Quiz special $_request clearance
+            if (
+                (
+                apbct_is_plugin_active('magnesium-quiz/magnesium-quiz.php')
+                )
+            ) {
+                $fields_to_clear[] = 'ct_bot_detector_event_token';
+                $fields_to_clear[] = 'ct_no_cookie_hidden_field';
+                $fields_to_clear[] = 'apbct_event_id';
+                $fields_to_clear[] = 'apbct__email_id';
             }
-            // no break when fall-through is intentional
+            // It is a service field. Need to be deleted before the processing.
+            break;
         case 'request':
             //Optima Express special $_request clearance
             if (
-                apbct_is_plugin_active('optima-express/iHomefinder.php') &&
                 (
-                    isset($superglobal['ct_no_cookie_hidden_field']) ||
-                    isset($superglobal['apbct_visible_fields'])
+                    apbct_is_plugin_active('optima-express/iHomefinder.php')
                 )
             ) {
-                unset($superglobal['ct_no_cookie_hidden_field']);
-                unset($superglobal['apbct_visible_fields']);
+                $fields_to_clear[] = 'ct_no_cookie_hidden_field';
             }
+            break;
     }
-    return $superglobal;
+    $cleared_superglobal = apbct_clear_array_fields_recursive($cleared_superglobal, $fields_to_clear);
+    return $cleared_superglobal;
+}
+
+/**
+ * Clear array from fields by preset
+ * @param array $array
+ * @param string[] $preset_of_fields_to_clear - array of fields to clear, look for strpos in the key of array
+ *
+ * @return array
+ */
+function apbct_clear_array_fields_recursive($array, $preset_of_fields_to_clear = array())
+{
+    $cleared = is_array($array) ? $array : array();
+    foreach ($array as $key => $value) {
+        if (is_array($value)) {
+            $cleared[$key] = apbct_clear_array_fields_recursive($value, $preset_of_fields_to_clear);
+        } else if (is_string($key) ) {
+            foreach ($preset_of_fields_to_clear as $field) {
+                if (strpos($key, $field) !== false) {
+                    unset($cleared[$key]);
+                }
+            }
+        }
+    }
+    return $cleared;
 }
 
 /**
