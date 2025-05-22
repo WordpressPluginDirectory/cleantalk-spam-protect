@@ -51,6 +51,7 @@ class State extends \Cleantalk\Common\State
         'forms__comments_test'                     => 1,
         'forms__contact_forms_test'                => 1,
         'forms__flamingo_save_spam'                => 1,
+        'forms__gravityforms_save_spam'            => 1,
         'forms__general_contact_forms_test'        => 1, // Anti-Spam test for unsupported and untested contact forms
         'forms__wc_checkout_test'                  => 1, // WooCommerce checkout default test
         'forms__wc_register_from_order'            => 1, // Woocommerce registration during checkout
@@ -74,10 +75,6 @@ class State extends \Cleantalk\Common\State
         'comments__manage_comments_on_public_page' => 0, // Allows to control comments on public page.
         'comments__the_real_person'                => 0, // Shows badge on each approved by cloud comments on public page.
         'comments__hide_website_field'             => 0, // Hide website field from comment form
-        'comments__form_decoration'                => 0, // Holiday form decoration
-        'comments__form_decoration_text'           => '', // Holiday form decoration text
-        'comments__form_decoration_color'          => '#E62F2E', // Holiday form decoration color
-        'comments__form_decoration_selector'    => 'holiday_fourth_july', // Holiday form decoration name of default set
 
         // Data processing
         'data__protect_logged_in'                  => 1, // Do anti-spam tests to for logged-in users.
@@ -92,6 +89,10 @@ class State extends \Cleantalk\Common\State
         'data__honeypot_field'                     => 1,
         'data__email_decoder'                      => 1,
         'data__email_decoder_buffer'               => 0,
+        'data__email_decoder_obfuscation_mode'     => 'blur',
+        'data__email_decoder_obfuscation_custom_text' => '',
+        'data__email_decoder_encode_phone_numbers' => 0,
+        'data__email_decoder_encode_email_addresses' => 1,
         'data__wc_store_blocked_orders'            => 0,
 
         // Exclusions

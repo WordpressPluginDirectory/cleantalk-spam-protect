@@ -1301,3 +1301,26 @@ function apbct_update_to_6_46_1()
 
     $apbct->deleteOption('debug', true);
 }
+
+function apbct_update_to_6_54_1()
+{
+    global $apbct;
+
+    $apbct->settings['data__email_decoder_encode_phone_numbers'] = 0;
+
+    if ($apbct->settings['data__email_decoder']) {
+        $apbct->settings['data__email_decoder_encode_email_addresses'] = 1;
+    } else {
+        $apbct->settings['data__email_decoder_encode_email_addresses'] = 0;
+    }
+
+    if ( ! isset($apbct->settings['forms__gravityforms_save_spam']) ) {
+        $apbct->settings['forms__gravityforms_save_spam'] =
+            isset($apbct->default_settings['forms__gravityforms_save_spam'])
+                ? $apbct->default_settings['forms__gravityforms_save_spam']
+                : 1;
+        $apbct->saveSettings();
+    }
+
+    $apbct->saveSettings();
+}

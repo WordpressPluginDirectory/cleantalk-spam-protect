@@ -103,9 +103,10 @@ $apbct_active_integrations = array(
         'ajax'    => false
     ),
     'EventsManager' => array(
-        'hook'    => 'em_booking_validate_after',
+        'hook'    => array('em_booking_validate_after', 'em_booking_add', 'booking_add'),
         'setting' => 'forms__contact_forms_test',
-        'ajax'    => false
+        'ajax'    => false,
+        'ajax_and_post' => true
     ),
     'PlansoFormBuilder' => array(
         'hook'    => 'psfb_validate_form_request',
@@ -338,9 +339,10 @@ $apbct_active_integrations = array(
     ),
     // Integration Contact Form Clean and Simple
     'CSCF' => array(
-        'hook'    => 'cscf-submitform',
+        'hook'    => array('cscf-submitform', 'cscf_spamfilter'),
         'setting' => 'forms__contact_forms_test',
         'ajax'    => true,
+        'ajax_and_post' => true
     ),
     'ThriveLeads' => array(
         'hook'    => 'tve_leads_ajax_conversion',
@@ -381,6 +383,36 @@ $apbct_active_integrations = array(
         'hook'    => 'wpas_open_ticket_before_assigned',
         'setting' => 'forms__contact_forms_test',
         'ajax'    => false
+    ),
+    'Listeo' => array(
+        'hook'    => 'listeoajaxregister',
+        'setting' => 'forms__registrations_test',
+        'ajax'    => true
+    ),
+    'BravePopUpPro' => array(
+        'hook'    => 'bravepop_form_submission',
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => true
+    ),
+    'SmartQuizBuilder' => array(
+        'hook'    => 'SQBSubmitQuizAjax',
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => true
+    ),
+    'WPZOOMForms' => array(
+        'hook'    => 'admin_post_nopriv_wpzf_submit',
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => false
+    ),
+    'Newsletter' => array(
+        'hook'    => 'newsletter_action',
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => false
+    ),
+    'ChatyContactForm'         => array(
+        'hook'    => 'chaty_front_form_save_data',
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => true
     ),
 );
 

@@ -206,361 +206,6 @@ function ct_woocommerce_wishlist_check($args)
     return $args;
 }
 
-
-/**
- * Test default search string for spam
- *
- * @param $search string
- *
- * @return string
- */
-function apbct_forms__search__testSpam($search)
-{
-    global $apbct, $cleantalk_executed;
-
-    if (
-        empty($search) ||
-        $cleantalk_executed ||
-        $apbct->settings['forms__search_test'] == 0 ||
-        ($apbct->settings['data__protect_logged_in'] != 1 && is_user_logged_in()) // Skip processing for logged in users.
-    ) {
-        do_action('apbct_skipped_request', __FILE__ . ' -> ' . __FUNCTION__ . '():' . __LINE__, $_POST);
-
-        return $search;
-    }
-
-    $user = apbct_is_user_logged_in() ? wp_get_current_user() : null;
-
-    $base_call_result = apbct_base_call(
-        array(
-            'message'         => $search,
-            'sender_email'    => $user !== null ? $user->user_email : null,
-            'sender_nickname' => $user !== null ? $user->user_login : null,
-            'post_info'       => array('comment_type' => 'site_search_wordpress'),
-            'exception_action' => 0,
-        )
-    );
-
-    if ( isset($base_call_result['ct_result']) ) {
-        $ct_result = $base_call_result['ct_result'];
-
-        $cleantalk_executed = true;
-
-        if ( $ct_result->allow == 0 ) {
-            die($ct_result->comment);
-        }
-    }
-
-    return $search;
-}
-
-function apbct_search_add_noindex()
-{
-    global $apbct;
-
-    if (
-        ! is_search() || // If it is search results
-        $apbct->settings['forms__search_test'] == 0 ||
-        ($apbct->settings['data__protect_logged_in'] != 1 && is_user_logged_in()) // Skip processing for logged in users.
-    ) {
-        return;
-    }
-
-    echo '<!-- meta by CleanTalk Anti-Spam Protection plugin -->' . "\n";
-    echo '<meta name="robots" content="noindex,nofollow" />' . "\n";
-}
-
-/**
- * Test woocommerce checkout form for spam
- */
-function ct_woocommerce_checkout_check($_data, $errors)
-{
-    global $apbct, $cleantalk_executed;
-
-    if ( count($errors->errors) ) {
-        return;
-    }
-
-    if ( $apbct->settings['data__protect_logged_in'] == 0 && is_user_logged_in() ) {
-        do_action('apbct_skipped_request', __FILE__ . ' -> ' . __FUNCTION__ . '():' . __LINE__, $_POST);
-
-        return;
-    }
-
-    /**
-     * Filter for POST
-     */
-    $input_array = apply_filters('apbct__filter_post', $_POST);
-
-    //Getting request params
-    $ct_temp_msg_data = ct_get_fields_any($input_array);
-
-    $sender_email    = isset($ct_temp_msg_data['email']) ? $ct_temp_msg_data['email'] : '';
-    $sender_emails_array = isset($ct_temp_msg_data['emails_array']) ? $ct_temp_msg_data['emails_array'] : null;
-    $sender_nickname = isset($ct_temp_msg_data['nickname']) ? $ct_temp_msg_data['nickname'] : '';
-    $subject         = isset($ct_temp_msg_data['subject']) ? $ct_temp_msg_data['subject'] : '';
-    $message         = isset($ct_temp_msg_data['message']) ? $ct_temp_msg_data['message'] : array();
-
-    if ( $subject != '' ) {
-        $message = array_merge(array('subject' => $subject), $message);
-    }
-
-    $post_info = array();
-    $post_info['comment_type'] = 'order';
-    $post_info['post_url']     = Server::get('HTTP_REFERER');
-
-    $base_call_data = array(
-        'message'         => $message,
-        'sender_email'    => $sender_email,
-        'sender_nickname' => $sender_nickname,
-        'post_info'       => $post_info,
-        'sender_info'     => array('sender_url' => null, 'sender_emails_array' => $sender_emails_array)
-    );
-
-    //Making a call
-    $base_call_result = apbct_base_call($base_call_data);
-
-    if ( $apbct->settings['forms__wc_register_from_order'] ) {
-        $cleantalk_executed = false;
-    }
-
-    if ( isset($base_call_result['ct_result']) ) {
-        $ct_result = $base_call_result['ct_result'];
-
-        // Get request_id and save to static $hash
-        ct_hash($ct_result->id);
-
-        if ( $ct_result->allow == 0 ) {
-            if ( $apbct->settings['data__wc_store_blocked_orders'] ) {
-                apbct_woocommerce__store_blocked_order();
-            }
-            wp_send_json(array(
-                'result'   => 'failure',
-                'messages' => "<ul class=\"woocommerce-error\"><li>" . $ct_result->comment . "</li></ul>",
-                'refresh'  => 'false',
-                'reload'   => 'false'
-            ));
-        }
-    }
-}
-
-/**
- * @param \WC_Order $order
- * @return void
- * @throws \Automattic\WooCommerce\StoreApi\Exceptions\RouteException
- * @psalm-suppress UndefinedClass
- */
-function ct_woocommerce_checkout_check_from_rest($order)
-{
-    global $apbct, $cleantalk_executed;
-
-    if ( is_null($order) || ! ($order instanceof \WC_Order) ) {
-        return;
-    }
-
-    $sender_email    = $order->get_billing_email();
-    $sender_nickname = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
-    $message         = $order->get_customer_note();
-
-    $post_info = array();
-    $post_info['comment_type'] = 'order';
-    $post_info['post_url']     = Server::get('HTTP_REFERER');
-
-    $base_call_data = array(
-        'message'         => $message,
-        'sender_email'    => $sender_email,
-        'sender_nickname' => $sender_nickname,
-        'post_info'       => $post_info,
-        'sender_info'     => array('sender_url' => null)
-    );
-
-    //Making a call
-    $base_call_result = apbct_base_call($base_call_data);
-
-    if ( $apbct->settings['forms__wc_register_from_order'] ) {
-        $cleantalk_executed = false;
-    }
-
-    if ( isset($base_call_result['ct_result']) ) {
-        $ct_result = $base_call_result['ct_result'];
-
-        // Get request_id and save to static $hash
-        ct_hash($ct_result->id);
-
-        if ( $ct_result->allow == 0 ) {
-            if ( $apbct->settings['data__wc_store_blocked_orders'] ) {
-                apbct_woocommerce__store_blocked_order();
-            }
-
-            if ( $order->get_status() === 'checkout-draft' ) {
-                try {
-                    $order->delete(true);
-                } catch (Exception $e) {
-                    error_log('Error deleting order: ' . $e->getMessage());
-                }
-            }
-
-            if ( class_exists('\Automattic\WooCommerce\StoreApi\Exceptions\RouteException') ) {
-                /** @psalm-suppress InvalidThrow */
-                throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException(
-                    'woocommerce_store_api_checkout_order_processed',
-                    $ct_result->comment,
-                    403
-                );
-            }
-        }
-    }
-}
-
-/**
- * @return void
- *
- * @psalm-suppress UndefinedFunction
- */
-function apbct_woocommerce__store_blocked_order()
-{
-    global $wpdb;
-
-    $query = 'INSERT INTO ' . APBCT_TBL_WC_SPAM_ORDERS . ' (order_details, customer_details) 
-              VALUES (%s, %s) 
-              ON DUPLICATE KEY UPDATE order_details = %s, customer_details = %s';
-
-    $prepared_query = $wpdb->prepare($query, [
-        json_encode(wc()->session->cart),
-        json_encode($_POST),
-        json_encode(wc()->session->cart),
-        json_encode($_POST),
-    ]);
-
-    $wpdb->query($prepared_query);
-}
-
-/**
- * Save request_id for WC order
- * @param $order_id
- */
-function apbct_woocommerce__add_request_id_to_order_meta($order_id)
-{
-    $request_id = ct_hash();
-
-    if (!empty($request_id)) {
-        update_post_meta($order_id, 'cleantalk_order_request_id', sanitize_key($request_id));
-    }
-}
-
-/**
- * Triggered when adding an item to the shopping cart
- * for un-logged users
- *
- * @return bool
- * @psalm-suppress UnusedParam
- * @psalm-suppress UndefinedFunction
- */
-
-function apbct_wc__add_to_cart_unlogged_user()
-{
-    global $apbct;
-
-    $data = Post::get('data');
-    if (is_array($data) && isset($data['ct_bot_detector_event_token'])) {
-        $event_token = $data['ct_bot_detector_event_token'];
-    } elseif ( Get::get('ct_bot_detector_event_token') ) {
-        $event_token = Get::get('ct_bot_detector_event_token');
-    } else {
-        $event_token = null;
-    }
-
-    $message = apply_filters('apbct__filter_post', $_POST);
-
-    $post_info = array();
-    $post_info['comment_type'] = 'order__add_to_cart';
-    $post_info['post_url']     = Sanitize::cleanUrl(Server::get('HTTP_REFERER'));
-
-    if ( ! $apbct->stats['no_cookie_data_taken'] ) {
-        apbct_form__get_no_cookie_data();
-    }
-
-    //Making a call
-    $base_call_result = apbct_base_call(
-        array(
-            'message'     => $message,
-            'post_info'   => $post_info,
-            'js_on'       => apbct_js_test(Sanitize::cleanTextField(Cookie::get('ct_checkjs')), true),
-            'sender_info' => array('sender_url' => null),
-            'exception_action' => false,
-            'event_token' => $event_token,
-        )
-    );
-
-    if ( isset($base_call_result['ct_result']) ) {
-        $ct_result = $base_call_result['ct_result'];
-
-        if ( $ct_result->allow == 0 ) {
-            wc_add_notice($ct_result->comment, 'error');
-            return false;
-        }
-    }
-
-    return true;
-}
-
-/**
- * @param $add_to_cart_data
- * @param $request
- * @return mixed
- * @psalm-suppress UndefinedFunction
- */
-function apbct_wc_store_api_add_to_cart_data($add_to_cart_data, $request)
-{
-    global $apbct;
-
-    if ( ! $apbct->stats['no_cookie_data_taken'] && $request->get_param('ct_no_cookie_hidden_field') ) {
-        apbct_form__get_no_cookie_data(
-            ['ct_no_cookie_hidden_field' => $request->get_param('ct_no_cookie_hidden_field')],
-            false
-        );
-    }
-
-    return $add_to_cart_data;
-}
-
-/**
- * @param $customer
- * @param $request
- * @return void
- * @psalm-suppress UnusedParam
- */
-function apbct_wc_store_api_checkout_update_customer_from_request($customer, $request)
-{
-    global $apbct;
-
-    if ( ! $apbct->stats['no_cookie_data_taken'] ) {
-        apbct_form__get_no_cookie_data(
-            ['ct_no_cookie_hidden_field' => $request->get_param('ct_no_cookie_hidden_field')],
-            false
-        );
-    }
-}
-
-/**
- * @param $order
- * @return void
- * @throws \Automattic\WooCommerce\StoreApi\Exceptions\RouteException
- * @psalm-suppress UndefinedClass, UnusedParam, InvalidThrow
- */
-function apbct_wc_store_api_checkout_order_processed($order)
-{
-    global $ct_registration_error_comment;
-
-    if (class_exists('\Automattic\WooCommerce\StoreApi\Exceptions\RouteException')) {
-        throw new \Automattic\WooCommerce\StoreApi\Exceptions\RouteException(
-            'woocommerce_store_api_checkout_order_processed',
-            $ct_registration_error_comment,
-            403
-        );
-    }
-}
-
 /**
  * Public function - Tests for Pirate contact forms
  * return NULL
@@ -910,6 +555,65 @@ function ct_bbp_new_pre_content($comment)
             }
         }
     }, 1);
+
+    return $comment;
+}
+
+/**
+ * Public filter 'bbp_*' - Checks edit replies by cleantalk
+ *
+ * @param string $comment Comment string
+ * @param int $comment_id Comment ID
+ * @psalm-suppress UnusedParam
+ */
+function ct_bbp_edit_pre_content($comment, $comment_id)
+{
+    global $apbct, $current_user;
+
+    if ( ! $apbct->settings['forms__comments_test'] ) {
+        do_action('apbct_skipped_request', __FILE__ . ' -> ' . __FUNCTION__ . '():' . __LINE__, $_POST);
+
+        return $comment;
+    }
+
+    // Skip processing for logged in users and admin.
+    if ( ! $apbct->settings['data__protect_logged_in'] && (is_user_logged_in() || apbct_exclusions_check()) ) {
+        do_action('apbct_skipped_request', __FILE__ . ' -> ' . __FUNCTION__ . '():' . __LINE__, $_POST);
+
+        return $comment;
+    }
+
+    $post_info = array();
+    $post_info['comment_type'] = 'bbpress_edit_comment';
+    /** @psalm-suppress UndefinedFunction */
+    $post_info['post_url']     = bbp_get_topic_permalink();
+
+    if ( is_user_logged_in() ) {
+        $sender_email    = $current_user->user_email;
+        $sender_nickname = $current_user->display_name;
+    } else {
+        $sender_email    = Sanitize::cleanEmail(Post::get('bbp_anonymous_email'));
+        $sender_nickname = Sanitize::cleanUser(Post::get('bbp_anonymous_name'));
+    }
+
+    $base_call_result = apbct_base_call(
+        array(
+            'message'         => $comment,
+            'sender_email'    => $sender_email,
+            'sender_nickname' => $sender_nickname,
+            'post_info'       => $post_info,
+            'sender_info'     => array('sender_url' => Sanitize::cleanUrl(Post::get('bbp_anonymous_website'))),
+        )
+    );
+
+    if ( isset($base_call_result['ct_result']) ) {
+        $ct_result = $base_call_result['ct_result'];
+
+        if ( $ct_result->allow == 0 ) {
+            /** @psalm-suppress UndefinedFunction */
+            bbp_add_error('bbp_reply_content', $ct_result->comment);
+        }
+    }
 
     return $comment;
 }
@@ -1296,7 +1000,7 @@ function ct_registration_errors($errors, $sanitized_user_login = null, $user_ema
         $ct_registration_error_comment = $ct_result->comment;
 
         if (current_filter() === 'woocommerce_registration_errors') {
-            add_action('woocommerce_store_api_checkout_order_processed', 'apbct_wc_store_api_checkout_order_processed', 10, 2);
+            add_action('woocommerce_store_api_checkout_order_processed', ['Cleantalk\Antispam\IntegrationsByClass\Woocommerce', 'storeApiCheckoutOrderProcessed'], 10, 2);
         }
 
         if ( $buddypress === true ) {
@@ -1929,6 +1633,42 @@ function apbct_form__learnpress__testSpam()
 }
 
 /**
+ * Test Appointment Booking Calendar form for spam
+ *
+ * @return void
+ */
+function apbct_form__appointment_booking_calendar__testSpam()
+{
+    global $ct_comment;
+
+    $params = ct_gfa(apply_filters('apbct__filter_post', $_POST));
+
+    $sender_info = [];
+
+    if ( ! empty($params['emails_array']) ) {
+        $sender_info['sender_emails_array'] = $params['emails_array'];
+    }
+
+    $base_call_result = apbct_base_call(
+        array(
+            'sender_email'    => isset($params['email']) ? $params['email'] : Post::get('email'),
+            'sender_nickname' => isset($params['nickname']) ? $params['nickname'] : Post::get('first_name'),
+            'post_info'       => array('comment_type' => 'signup_form_wordpress_learnpress'),
+            'sender_info'     => $sender_info,
+        )
+    );
+
+    if ( isset($base_call_result['ct_result']) ) {
+        $ct_result = $base_call_result['ct_result'];
+        if ( $ct_result->allow == 0 ) {
+            $ct_comment = $ct_result->comment;
+            ct_die(null, null);
+            exit;
+        }
+    }
+}
+
+/**
  * Test OptimizePress form for spam
  *
  * @return void
@@ -2117,10 +1857,15 @@ function apbct_form__ninjaForms__collect_fields_old()
      */
     $input_array = apply_filters('apbct__filter_post', $_POST);
 
-    // Choosing between POST and GET
-    return ct_gfa_dto(
-        Get::get('ninja_forms_ajax_submit') || Get::get('nf_ajax_submit') ? $_GET : $input_array
-    );
+    // Choosing between sanitized GET and POST
+    $input_data = Get::get('ninja_forms_ajax_submit') || Get::get('nf_ajax_submit')
+        ? array_map(function ($value) {
+            return is_string($value) ? htmlspecialchars($value) : $value;
+        }, $_GET)
+        : $input_array;
+
+    // Return the collected fields data
+    return ct_gfa_dto($input_data);
 }
 
 /**
@@ -2163,7 +1908,8 @@ function apbct_form__ninjaForms__collect_fields_new()
 
     $nf_form_fields = $form_data['fields'];
     $nickname = '';
-    $email = '';
+    $nf_prior_email = '';
+    $nf_emails_array = array();
     $fields = [];
     foreach ($nf_form_fields as $field) {
         if ( isset($nf_form_fields_info_array[$field['id']]) ) {
@@ -2175,14 +1921,25 @@ function apbct_form__ninjaForms__collect_fields_new()
                 if ( stripos($field_key, 'name') !== false && stripos($field_type, 'name') !== false ) {
                     $nickname .= ' ' . $field['value'];
                 }
-                if ( stripos($field_key, 'email') !== false && $field_type === 'email' ) {
-                    $email = $field['value'];
+                if (
+                    (stripos($field_key, 'email') !== false && $field_type === 'email') ||
+                    (function_exists('is_email') && is_string($field['value']) && is_email($field['value']))
+                ) {
+                    /**
+                     * On the plugin side we can not decide which of presented emails have to be used for check as sender_email,
+                     * so we do collect any of them and provide to GFA as $emails_array param.
+                     */
+                    if (empty($nf_prior_email)) {
+                        $nf_prior_email = $field['value'];
+                    } else {
+                        $nf_emails_array[] = $field['value'];
+                    }
                 }
             }
         }
     }
 
-    return ct_gfa_dto($fields, $email, $nickname);
+    return ct_gfa_dto($fields, $nf_prior_email, $nickname, $nf_emails_array);
 }
 
 /**
@@ -2828,16 +2585,16 @@ function ct_check_wplp()
 
         $sender_email = '';
         foreach ( $_POST as $v ) {
-            $sanitized_value = TT::toString($v);
-            if ( preg_match("/^\S+@\S+\.\S+$/", $sanitized_value) ) {
+            $sanitized_value = filter_var($v, FILTER_SANITIZE_EMAIL);
+            if ( filter_var($sanitized_value, FILTER_VALIDATE_EMAIL) ) {
                 $sender_email = $sanitized_value;
                 break;
             }
         }
 
         $message = '';
-        if ( array_key_exists('form_input_values', $_POST) ) {
-            $form_input_values = json_decode(stripslashes(TT::getArrayValueAsString($_POST, 'form_input_values')), true);
+        if ( array_key_exists('form_input_values', $_POST) && is_string($_POST['form_input_values']) ) {
+            $form_input_values = json_decode(stripslashes($_POST['form_input_values']), true);
             if ( is_array($form_input_values) && array_key_exists('null', $form_input_values) ) {
                 $message = Sanitize::cleanTextareaField($form_input_values['null']);
             }
@@ -2908,6 +2665,7 @@ function apbct_form__gravityForms__addField($form_string, $form)
  * Gravity forms anti-spam test.
  * @return boolean
  * @psalm-suppress UnusedVariable
+ * @psalm-suppress ArgumentTypeCoercion
  */
 function apbct_form__gravityForms__testSpam($is_spam, $form, $entry)
 {
@@ -3040,7 +2798,12 @@ function apbct_form__gravityForms__testSpam($is_spam, $form, $entry)
             $is_spam           = true;
             $ct_gform_is_spam  = true;
             $ct_gform_response = $ct_result->comment;
-            add_action('gform_entry_created', 'apbct_form__gravityForms__add_entry_note');
+            if ( isset($apbct->settings['forms__gravityforms_save_spam']) && $apbct->settings['forms__gravityforms_save_spam'] == 1 ) {
+                add_action('gform_entry_created', 'apbct_form__gravityForms__add_entry_note');
+            } elseif ( class_exists('GFFormsModel') && method_exists('GFFormsModel', 'delete_lead') ) {
+                /** @psalm-suppress UndefinedClass */
+                GFFormsModel::delete_lead($entry['id']);
+            }
         }
     }
 
@@ -3620,53 +3383,6 @@ function apbct_form_happyforms_test_spam($is_valid, $request, $_form)
 }
 
 /**
- * Prepare data to add honeypot to the WordPress default search form.
- * Fires ct_add_honeypot_field() on hook get_search_form when:
- * - method of the form is post
- * - spam test of search form is enabled
- *
- * @param string $form_html
- * @return string
- */
-function apbct_form_search__add_fields($form_html)
-{
-    global $apbct;
-
-    if ( !empty($form_html) && is_string($form_html) && $apbct->settings['forms__search_test'] == 1 ) {
-        // extract method of the form with DOMDocument
-        if ( class_exists('DOMDocument') ) {
-            libxml_use_internal_errors(true);
-            $dom = new DOMDocument();
-            if ( @$dom->loadHTML($form_html) ) {
-                $search_form_dom = $dom->getElementById('searchform');
-                if ( !empty($search_form_dom) ) {
-                    $method = empty($search_form_dom->getAttribute('method'))
-                        //default method is get for any form if no method specified
-                        ? 'get'
-                        : $search_form_dom->getAttribute('method');
-                }
-            }
-            libxml_clear_errors();
-            unset($dom);
-        }
-
-        // retry extract method of the form with regex
-        if ( empty($method) ) {
-            preg_match('/form.*method="(.*?)"/', $form_html, $matches);
-            $method = empty($matches[1])
-                ? 'get'
-                : trim($matches[1]);
-        }
-
-        $form_method = strtolower($method);
-
-        return str_replace('</form>', Honeypot::generateHoneypotField('search_form', $form_method) . '</form>', $form_html);
-    }
-
-    return $form_html;
-}
-
-/**
  * Advanced Classifieds & Directory Pro
  *
  * @param $response
@@ -3683,7 +3399,8 @@ function apbct_advanced_classifieds_directory_pro__check_register($response, $_f
         Post::get('username') &&
         Post::get('email')
     ) {
-        $data = ct_get_fields_any($_POST, Sanitize::cleanEmail(Post::get('email')));
+        $data = ct_gfa_dto(apply_filters('apbct__filter_post', $_POST), Sanitize::cleanEmail(Post::get('email')));
+        $data = $data->getArray();
 
         $base_call_result = apbct_base_call(
             array(
@@ -3712,119 +3429,6 @@ function apbct_advanced_classifieds_directory_pro__check_register($response, $_f
     }
 
     return $response;
-}
-
-/*********** Woocommerce able add orders to spam ***********/
-
-/**
- * Register the new 'spam' status
- */
-add_filter('woocommerce_register_shop_order_post_statuses', 'apbct__wc_add_orders_spam_status');
-function apbct__wc_add_orders_spam_status($order_statuses)
-{
-    $order_statuses['wc-spamorder'] = array(
-        'label' => 'Spam',
-        'public' => false,
-        'exclude_from_search' => false,
-        'show_in_admin_all_list' => true,
-        'show_in_admin_status_list' => true,
-        'label_count' => _n_noop(
-            'Spam <span class="count">(%s)</span>',
-            'Spam <span class="count">(%s)</span>',
-            'cleantalk-spam-protect'
-        ),
-    );
-    return $order_statuses;
-}
-
-/**
- * Enable orders filtering by 'spam' status
- */
-add_filter('wc_order_statuses', 'apbct__wc_add_orders_spam_status_select'); // make spam selectable
-function apbct__wc_add_orders_spam_status_select($order_statuses)
-{
-    $order_statuses['wc-spamorder'] = 'Spam';
-    return $order_statuses;
-}
-
-/**
- * Don't show orders marked 'spam' in the common order list
- */
-add_action('parse_query', 'apbct__wc_add_orders_spam_status_hide_from_list'); // hide spam orders from total list
-function apbct__wc_add_orders_spam_status_hide_from_list($query)
-{
-    global $pagenow;
-
-    $query_vars = &$query->query_vars;
-
-    if ( $pagenow == 'edit.php'
-        && isset($query_vars['post_type'])
-        && $query_vars['post_type'] == 'shop_order'
-        && isset($query_vars['post_status'])
-        && is_array($query_vars['post_status'])
-        && ( $key = array_search('wc-spamorder', $query_vars['post_status']) ) !== false
-    ) {
-        unset($query_vars['post_status'][$key]);
-    }
-}
-
-/**
- * Add bulk actions: 'Mark as spam' and 'Unmark as spam'
- */
-add_filter('bulk_actions-edit-shop_order', 'apbct__wc_add_spam_action_to_bulk'); // add spam action to bulk
-function apbct__wc_add_spam_action_to_bulk($actions)
-{
-    if ( get_query_var('post_status') === 'wc-spamorder' ) {
-        $actions['unspamorder'] = __('Unmark as spam', 'cleantalk-spam-protect');
-    } else {
-        $actions['spamorder'] = __('Mark as spam', 'cleantalk-spam-protect');
-    }
-    return $actions;
-}
-
-/**
- * The bulk actions 'Mark as spam' and 'Unmark as spam' handler
- */
-add_filter('handle_bulk_actions-edit-shop_order', 'apbct__wc_add_spam_action_to_bulk_handle', 10, 3); // handle bulk action
-/**
- * @param $redirect
- * @param $action
- * @param $ids
- *
- * @return mixed|string
- * @psalm-suppress UndefinedClass
- */
-function apbct__wc_add_spam_action_to_bulk_handle($redirect, $action, $ids)
-{
-    if ( $action !== 'spamorder' &&  $action !== 'unspamorder' ) {
-        return $redirect;
-    }
-
-    // spam orders
-    $spam_ids = array();
-
-    foreach ($ids as $order_id) {
-        $order = new WC_Order((int)$order_id);
-        if ( $action === 'unspamorder' ) {
-            $order->update_status('wc-on-hold');
-        } else {
-            $spam_ids[] = $order_id;
-            $order->update_status('wc-spamorder');
-        }
-    }
-
-    // Send feedback to API
-    if (!empty($spam_ids)) {
-        apbct_woocommerce__orders_send_feedback($spam_ids);
-    }
-
-    return add_query_arg(
-        array(
-            'bulk_action' => 'marked_' . $action,
-            'changed' => count($ids),
-        ),
-        $redirect
-    );
 }
 
 function ct_mc4wp_hook($errors)
@@ -3965,8 +3569,11 @@ function apbct_jetformbuilder_request_test()
         $sender_info['sender_emails_array'] = $params['emails_array'];
     }
 
+    $message = isset($params['message']) ? $params['message'] : [];
+
     $base_call_result = apbct_base_call(
         array(
+            'message'         => $message,
             'sender_email'    => isset($params['email']) ? $params['email'] : '',
             'sender_nickname' => isset($params['nickname']) ? $params['nickname'] : '',
             'post_info'       => array('comment_type' => 'jetformbuilder_signup_form'),

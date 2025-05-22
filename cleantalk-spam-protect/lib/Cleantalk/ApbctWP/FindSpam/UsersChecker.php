@@ -3,6 +3,7 @@
 namespace Cleantalk\ApbctWP\FindSpam;
 
 use Cleantalk\ApbctWP\AJAXService;
+use Cleantalk\ApbctWP\ApbctEnqueue;
 use Cleantalk\ApbctWP\FindSpam\ListTable\BadUsers;
 use Cleantalk\ApbctWP\FindSpam\ListTable\UsersLogs;
 use Cleantalk\ApbctWP\FindSpam\ListTable\UsersScan;
@@ -37,13 +38,8 @@ class UsersChecker extends Checker
             }
         }
 
-        wp_enqueue_script(
-            'ct_users_checkspam',
-            APBCT_JS_ASSETS_PATH . '/cleantalk-users-checkspam.min.js',
-            array('jquery', 'jquery-ui-core'),
-            APBCT_VERSION
-        );
-        wp_localize_script('ct_users_checkspam', 'ctUsersCheck', array(
+        ApbctEnqueue::getInstance()->js('cleantalk-users-checkspam.js', array('jquery', 'jquery-ui-core'));
+        wp_localize_script('cleantalk-users-checkspam-js', 'ctUsersCheck', array(
             'ct_ajax_nonce'            => $apbct->ajax_service->getAdminNonce(),
             'ct_prev_accurate'         => ! empty($prev_check['accurate']) ? true : false,
             'ct_prev_from'             => ! empty($prev_check_from) ? $prev_check_from : false,
@@ -74,13 +70,7 @@ class UsersChecker extends Checker
             'ct_select_date_range' => esc_html__('Please, select a date range.', 'cleantalk-spam-protect'),
         ));
 
-        wp_enqueue_style(
-            'cleantalk_admin_css_settings_page',
-            APBCT_JS_ASSETS_PATH . '/cleantalk-spam-check.min.css',
-            array(),
-            APBCT_VERSION,
-            'all'
-        );
+        ApbctEnqueue::getInstance()->css('cleantalk-spam-check.css');
     }
 
     /**
@@ -105,20 +95,9 @@ class UsersChecker extends Checker
             $between_dates_sql = "WHERE $wpdb->users.user_registered >= '$date_from' AND $wpdb->users.user_registered <= '$date_till'";
         }
 
-        // Woocommerce
-        $wc_active = false;
         $wc_orders = '';
-        if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')), true)) {
-            $wc_active = true;
-        }
-        if ($wc_active && $userScanParameters->getAccurateCheck()) {
-            $wc_orders = " AND NOT EXISTS (SELECT posts.* FROM {$wpdb->posts} AS posts"
-                . " INNER JOIN {$wpdb->postmeta} AS postmeta"
-                . " WHERE posts.post_type = 'shop_order'"
-                . " AND posts.post_status = 'wc-completed'"
-                . " AND posts.ID = postmeta.post_id"
-                . " AND postmeta.meta_key = '_customer_user'"
-                . " AND postmeta.meta_value = {$wpdb->users}.ID)";
+        if ($userScanParameters->getAccurateCheck()) {
+            $wc_orders = \Cleantalk\Antispam\IntegrationsByClass\Woocommerce::getCompletedOrders();
         }
 
         $query = "SELECT {$wpdb->users}.ID, {$wpdb->users}.user_email, {$wpdb->users}.user_registered
@@ -305,7 +284,7 @@ class UsersChecker extends Checker
         $this->list_table = new BadUsers();
 
         echo '<h3>' . esc_html__(
-            "These users can't be checked because they haven't IP or e-mail",
+            "These users can't be checked because they haven't IP and e-mail",
             'cleantalk-spam-protect'
         ) . '</h3>';
         echo '<form action="" method="POST">';

@@ -1,14 +1,13 @@
 <?php
 
+use Cleantalk\ApbctWP\ApbctEnqueue;
 use Cleantalk\ApbctWP\Escape;
 use Cleantalk\ApbctWP\Localize\LocalizeHandler;
 use Cleantalk\ApbctWP\Sanitize;
 use Cleantalk\ApbctWP\Variables\Cookie;
 use Cleantalk\ApbctWP\Variables\Get;
 use Cleantalk\ApbctWP\Variables\Post;
-use Cleantalk\ApbctWP\Variables\Request;
 use Cleantalk\ApbctWP\Variables\Server;
-use Cleantalk\Common\TT;
 use Cleantalk\ApbctWP\LinkConstructor;
 
 /**
@@ -23,7 +22,14 @@ function apbct_init()
     global $ct_jp_comments, $apbct;
 
     // Pixel
-    if ( $apbct->settings['data__pixel'] && empty($apbct->pixel_url) ) {
+    if (
+        $apbct->settings['data__pixel'] &&
+        empty($apbct->pixel_url) &&
+        !(
+            $apbct->settings['data__bot_detector_enabled'] === '1' &&
+            $apbct->settings['data__pixel'] === '3'
+        )
+    ) {
         $apbct->pixel_url = apbct_get_pixel_url(true);
     }
 
@@ -39,11 +45,6 @@ function apbct_init()
 
         // The exclusion of scripts from wp-rocket handler
         add_filter('rocket_delay_js_exclusions', 'apbct_rocket_delay_js_exclusions');
-    }
-
-    //Search form hook init
-    if ( $apbct->settings['forms__search_test'] ) {
-        add_filter('get_search_form', 'apbct_form_search__add_fields', 999);
     }
 
     //fix for EPM registration form
@@ -153,32 +154,10 @@ function apbct_init()
         add_filter('si_contact_form_validate', 'ct_si_contact_form_validate');
     }
 
-    // WooCommerce registration
-    if ( class_exists('WooCommerce') ) {
-        if ( !$apbct->settings['forms__wc_register_from_order'] && (Request::get('wc-ajax') === 'checkout' || Request::get('wc-ajax') === 'complete_order') ) {
-            remove_filter('woocommerce_registration_errors', 'ct_registration_errors', 1);
-        } else {
-            add_filter('woocommerce_registration_errors', 'ct_registration_errors', 1, 3);
-        }
-        if ( $apbct->settings['forms__wc_checkout_test'] == 1 ) {
-            add_action('woocommerce_after_checkout_validation', 'ct_woocommerce_checkout_check', 1, 2);
-            add_action('woocommerce_store_api_checkout_order_processed', 'ct_woocommerce_checkout_check_from_rest', 1, 1);
-            add_action('woocommerce_checkout_update_order_meta', 'apbct_woocommerce__add_request_id_to_order_meta');
-            add_action('woocommerce_store_api_checkout_update_customer_from_request', 'apbct_wc_store_api_checkout_update_customer_from_request', 10, 2);
-        }
-
-        if ( ! apbct_is_user_logged_in() && $apbct->settings['forms__wc_add_to_cart'] ) {
-            //Woocommerce add_to_cart action
-            add_filter('woocommerce_add_to_cart_validation', 'apbct_wc__add_to_cart_unlogged_user', 10, 6);
-            add_filter('woocommerce_store_api_add_to_cart_data', 'apbct_wc_store_api_add_to_cart_data', 10, 2);
-        }
-    }
-
     // WooCommerce whishlist
     if ( class_exists('WC_Wishlists_Wishlist') ) {
         add_filter('wc_wishlists_create_list_args', 'ct_woocommerce_wishlist_check', 1, 1);
     }
-
 
     // JetPack Contact form
     if ( defined('JETPACK__VERSION') ) {
@@ -235,6 +214,7 @@ function apbct_init()
         add_filter('bbp_new_reply_pre_content', 'ct_bbp_new_pre_content', 1);
         add_action('bbp_theme_before_topic_form_content', 'ct_comment_form');
         add_action('bbp_theme_before_reply_form_content', 'ct_comment_form');
+        add_action('bbp_edit_reply_pre_content', 'ct_bbp_edit_pre_content', 1, 2);
     }
 
     //Custom Contact Forms
@@ -541,7 +521,11 @@ function apbct_hook__wp_footer()
     // Pixel
     if (
         $apbct->settings['data__pixel'] === '1' ||
-        ($apbct->settings['data__pixel'] === '3' && ! apbct_is_cache_plugins_exists())
+        (
+            $apbct->settings['data__pixel'] === '3' &&
+            ! apbct_is_cache_plugins_exists() &&
+            $apbct->settings['data__bot_detector_enabled'] !== '1'
+        )
     ) {
         echo '<img alt="Cleantalk Pixel" title="Cleantalk Pixel" id="apbct_pixel" style="display: none;" src="' . Escape::escUrl($apbct->pixel_url) . '">';
     }
@@ -1208,16 +1192,9 @@ function ct_enqueue_scripts_public($_hook)
         // Admin javascript for managing comments on public pages
         if ( $apbct->settings['comments__manage_comments_on_public_page'] ) {
             $ajax_nonce = $apbct->ajax_service->getAdminNonce();
-            wp_enqueue_script(
-                'ct_public_admin_js',
-                APBCT_JS_ASSETS_PATH . '/cleantalk-public-admin.min.js',
-                // keep this jquery dependency if option comments__manage_comments_on_public_page is enabled
-                array('jquery'),
-                APBCT_VERSION,
-                false /*in header*/
-            );
+            ApbctEnqueue::getInstance()->js('cleantalk-public-admin.js', array('jquery'), false);
 
-            wp_localize_script('ct_public_admin_js', 'ctPublicAdmin', array(
+            wp_localize_script('cleantalk-public-admin-js', 'ctPublicAdmin', array(
                 'ct_ajax_nonce'       => $ajax_nonce,
                 'ajaxurl'             => admin_url('admin-ajax.php', 'relative'),
                 'ct_feedback_error'   => __('Error occurred while sending feedback.', 'cleantalk-spam-protect'),
@@ -1260,43 +1237,19 @@ function ct_enqueue_styles_public()
         $apbct->settings['comments__bp_private_messages'] ||
         $apbct->settings['data__general_postdata_test']
     ) {
-        // Common public styles
-        wp_enqueue_style(
-            'ct_public_css',
-            APBCT_CSS_ASSETS_PATH . '/cleantalk-public.min.css',
-            array(),
-            APBCT_VERSION
-        );
-
-        // Email Decoder styles
-        wp_enqueue_style(
-            'ct_email_decoder_css',
-            APBCT_CSS_ASSETS_PATH . '/cleantalk-email-decoder.min.css',
-            array(),
-            APBCT_VERSION
-        );
+        ApbctEnqueue::getInstance()->css('cleantalk-public.css');
+        ApbctEnqueue::getInstance()->css('cleantalk-email-decoder.css');
 
         // Public admin styles
         if ( in_array("administrator", $current_user->roles) ) {
             // Admin style for managing comments on public pages
             if ( $apbct->settings['comments__manage_comments_on_public_page'] ) {
-                 wp_enqueue_style(
-                     'ct_public_admin_css',
-                     APBCT_CSS_ASSETS_PATH . '/cleantalk-public-admin.min.css',
-                     array(),
-                     APBCT_VERSION,
-                     'all'
-                 );
+                ApbctEnqueue::getInstance()->css('cleantalk-public-admin.css');
             }
         }
     }
     if ( $apbct->settings['comments__the_real_person'] ) {
-        wp_enqueue_style(
-            'ct_trp_public',
-            APBCT_CSS_ASSETS_PATH . '/cleantalk-trp.min.css',
-            array(),
-            APBCT_VERSION
-        );
+        ApbctEnqueue::getInstance()->css('cleantalk-trp.css');
     }
 }
 
@@ -1312,47 +1265,24 @@ function apbct_enqueue_and_localize_public_scripts()
 
     // Different JS params
     if (!$apbct->settings['forms__check_external'] && !$apbct->settings['forms__check_internal']) {
-        wp_enqueue_script(
-            'ct_public_functions',
-            APBCT_URL_PATH . '/js/apbct-public-bundle.min.js',
-            array(),
-            APBCT_VERSION,
-            $in_footer
-        );
+        ApbctEnqueue::getInstance()->js('apbct-public-bundle.js', array(), $in_footer);
     }
 
     if ($apbct->settings['forms__check_external'] && !$apbct->settings['forms__check_internal']) {
-        wp_enqueue_script(
-            'ct_public_functions-external_forms',
-            APBCT_URL_PATH . '/js/apbct-public-bundle_ext-protection.min.js',
-            array(),
-            APBCT_VERSION,
-            $in_footer
-        );
+        ApbctEnqueue::getInstance()->js('apbct-public-bundle_ext-protection.js', array(), $in_footer);
     }
 
     if ($apbct->settings['forms__check_internal'] && !$apbct->settings['forms__check_external']) {
-        wp_enqueue_script(
-            'ct_public_functions-internal_forms',
-            APBCT_URL_PATH . '/js/apbct-public-bundle_int-protection.min.js',
-            array(),
-            APBCT_VERSION,
-            $in_footer
-        );
+        ApbctEnqueue::getInstance()->js('apbct-public-bundle_int-protection.js', array(), $in_footer);
     }
 
     if ($apbct->settings['forms__check_external'] && $apbct->settings['forms__check_internal']) {
-        wp_enqueue_script(
-            'ct_public_functions',
-            APBCT_URL_PATH . '/js/apbct-public-bundle_full-protection.min.js',
-            array(),
-            APBCT_VERSION,
-            $in_footer
-        );
+        ApbctEnqueue::getInstance()->js('apbct-public-bundle_full-protection.js', array(), $in_footer);
     }
 
     // Bot detector
     if ( $apbct->settings['data__bot_detector_enabled'] && ! apbct_bot_detector_scripts_exclusion()) {
+        // Attention! Skip old enqueue way for external script.
         wp_enqueue_script(
             'ct_bot_detector',
             'https://moderate.cleantalk.org/ct-bot-detector-wrapper.js',
@@ -1361,17 +1291,11 @@ function apbct_enqueue_and_localize_public_scripts()
             array(
                 'in_footer' => $in_footer,
                 'strategy' => 'defer'
-                )
+            )
         );
     }
 
-    wp_enqueue_style(
-        'ct_public_css',
-        APBCT_CSS_ASSETS_PATH . '/cleantalk-public.min.css',
-        array(),
-        APBCT_VERSION,
-        'all'
-    );
+    ApbctEnqueue::getInstance()->css('cleantalk-public.css');
 }
 
 function apbct_bot_detector_scripts_exclusion()

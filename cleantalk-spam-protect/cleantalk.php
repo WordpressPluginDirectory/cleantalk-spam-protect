@@ -4,7 +4,7 @@
   Plugin Name: Anti-Spam by CleanTalk
   Plugin URI: https://cleantalk.org
   Description: Max power, all-in-one, no Captcha, premium anti-spam plugin. No comment spam, no registration spam, no contact spam, protects any WordPress forms.
-  Version: 6.51
+  Version: 6.56
   Author: CleanTalk - Anti-Spam Protection <welcome@cleantalk.org>
   Author URI: https://cleantalk.org
   Text Domain: cleantalk-spam-protect
@@ -29,7 +29,6 @@ use Cleantalk\ApbctWP\Firewall\AntiCrawler;
 use Cleantalk\ApbctWP\Firewall\AntiFlood;
 use Cleantalk\ApbctWP\Firewall\SFW;
 use Cleantalk\ApbctWP\Firewall\SFWUpdateHelper;
-use Cleantalk\ApbctWP\FormDecorator\FormDecorator;
 use Cleantalk\ApbctWP\Helper;
 use Cleantalk\ApbctWP\RemoteCalls;
 use Cleantalk\ApbctWP\RequestParameters\RequestParameters;
@@ -207,11 +206,6 @@ if ( $apbct->settings['comments__the_real_person'] ) {
     new CleantalkRealPerson();
 }
 
-if ( $apbct->settings['comments__form_decoration'] && $apbct->settings['comments__form_decoration_selector']) {
-    $decorator = new FormDecorator();
-    $decorator->setDecorationSet($apbct->settings['comments__form_decoration_selector']);
-}
-
 add_action('rest_api_init', 'apbct_register_my_rest_routes');
 function apbct_register_my_rest_routes()
 {
@@ -275,7 +269,7 @@ add_action('init', function () {
     global $apbct;
 
     // Self cron
-    $ct_cron = new Cron();
+    $ct_cron = Cron::getInstance();
     $tasks_to_run = $ct_cron->checkTasks(); // Check for current tasks. Drop tasks inner counters.
     if (
         $tasks_to_run && // There are tasks to run
@@ -330,14 +324,18 @@ if ( ! is_admin() && ! apbct_is_ajax() && ! defined('DOING_CRON')
             add_action('template_redirect', 'apbct_cookie', 2);
         }
         add_action('template_redirect', 'apbct_store__urls', 2);
+        add_action('template_redirect', 'apbct_store__page_hits', 2);
     }
     if (
         empty($_POST) &&
-        ( (isset($_GET['q']) && $_GET['q'] !== '') || empty($_GET) ) &&
         $apbct->data['key_is_ok']
     ) {
+        if ( (isset($_GET['q']) && $_GET['q'] !== '') || empty($_GET) ) {
             apbct_cookie();
-            apbct_store__urls();
+        }
+        //store url and hits ignoring GET containment
+        apbct_store__page_hits();
+        apbct_store__urls();
     }
 }
 
@@ -429,6 +427,14 @@ if (
     sizeof($_POST) > 0
 ) {
     apbct_form__learnpress__testSpam();
+}
+
+// Appointment Booking Calendar
+if (
+    apbct_is_plugin_active('appointment-booking-calendar/cpabc_appointments.php') &&
+    Post::getString('cpabc_appointments_post')
+) {
+    apbct_form__appointment_booking_calendar__testSpam();
 }
 
 // OptimizePress
@@ -594,10 +600,6 @@ add_action('mec_booking_end_form_step_2', function () {
 
 // Public actions
 if ( ! is_admin() && ! apbct_is_ajax() && ! apbct_is_customize_preview() ) {
-    // Default search
-    add_filter('get_search_query', 'apbct_forms__search__testSpam');
-    add_action('wp_head', 'apbct_search_add_noindex', 1);
-
     if (apbct_is_plugin_active('fluentformpro/fluentformpro.php') && apbct_is_in_uri('ff_landing=')) {
         add_action('wp_head', function () {
             echo '<script data-pagespeed-no-defer="" src="'
@@ -618,9 +620,7 @@ if ( ! is_admin() && ! apbct_is_ajax() && ! apbct_is_customize_preview() ) {
          ! Server::inUri('/favicon.ico') &&
          ! apbct_is_cli()
     ) {
-        wp_suspend_cache_addition(true);
-        apbct_sfw__check();
-        wp_suspend_cache_addition(false);
+        add_action('init', 'apbct_sfw__init_wrapper', 1);
     }
 }
 
@@ -696,7 +696,6 @@ if ( is_admin() || is_network_admin() ) {
     require_once(CLEANTALK_PLUGIN_DIR . 'inc/cleantalk-find-spam.php');
     require_once(CLEANTALK_PLUGIN_DIR . 'inc/cleantalk-admin.php');
     require_once(CLEANTALK_PLUGIN_DIR . 'inc/cleantalk-settings.php');
-    require_once(CLEANTALK_PLUGIN_DIR . 'inc/cleantalk-wc-spam-orders.php');
 
     add_action('admin_init', 'apbct_admin__init', 1);
 
@@ -816,6 +815,7 @@ if ( is_admin() || is_network_admin() ) {
     if ( ! Post::get('wp-submit') ) {
         add_action('login_form_register', 'apbct_cookie');
         add_action('login_form_register', 'apbct_store__urls');
+        add_action('login_form_register', 'apbct_store__page_hits');
     }
     add_action('login_enqueue_scripts', 'apbct_login__scripts');
     add_action('register_form', 'ct_register_form');
@@ -840,6 +840,17 @@ if ( is_admin() || is_network_admin() ) {
         ct_contact_form_validate();
         $_POST['redirect_to'] = $tmp;
     }
+}
+
+/**
+ * Wrapper for SpamFireWall check to make if fire on 'init' hook
+ * @return void
+ */
+function apbct_sfw__init_wrapper()
+{
+    wp_suspend_cache_addition(true);
+    apbct_sfw__check();
+    wp_suspend_cache_addition(false);
 }
 
 /**
@@ -2505,7 +2516,6 @@ function apbct_store__urls()
         $current_url = TT::toString(Server::get('HTTP_HOST'))
             . TT::toString(Server::get('REQUEST_URI'));
         $current_url = $current_url ? substr($current_url, 0, 128) : 'UNKNOWN';
-        $site_url    = parse_url(TT::toString(get_option('home')), PHP_URL_HOST);
 
         // Get already stored URLs
         $urls_json = TT::toString(RequestParameters::getCommonStorage('apbct_urls'));
@@ -2533,24 +2543,22 @@ function apbct_store__urls()
         // Saving
         RequestParameters::setCommonStorage('apbct_urls', json_encode($urls, JSON_UNESCAPED_SLASHES));
 
+        // SITE-REFERER
+        // Get current site-referer
+        $new_site_referer = Server::getString('HTTP_REFERER');
 
-        // REFERER
-        // Get current referer
-        $new_site_referer = TT::toString(Server::get('HTTP_REFERER'));
-        $new_site_referer = $new_site_referer !== '' ? $new_site_referer : 'UNKNOWN';
-
-        // Get already stored referer
-        $site_referer = TT::toString(RequestParameters::get('apbct_site_referer', true));
-
-        // Save if empty
-        if (
-            $site_url &&
-            (
-                ! $site_referer ||
-                parse_url($new_site_referer, PHP_URL_HOST) !== Server::get('HTTP_HOST')
-            ) && $apbct->data['cookies_type'] === 'native'
-        ) {
-            RequestParameters::set('apbct_site_referer', $new_site_referer, true);
+        if (empty($new_site_referer)) {
+            //do not overwrite existing param - this case is when the new url is entered via address bar
+            if (empty(RequestParameters::get('apbct_site_referer', true))) {
+                //we should keep existing param anyway to make sure the site referer is not lost
+                RequestParameters::set('apbct_site_referer', '0', true);
+            }
+        } else {
+            $is_valid_new_url  = parse_url($new_site_referer, PHP_URL_HOST) !== null;
+            $is_not_like_host = $is_valid_new_url && parse_url($new_site_referer, PHP_URL_HOST) !== Server::getString('HTTP_HOST');
+            if ($is_not_like_host) {
+                RequestParameters::set('apbct_site_referer', $new_site_referer, true);
+            }
         }
 
         $apbct->flags__url_stored = true;
@@ -2617,19 +2625,6 @@ function apbct_cookie()
             $cookie_test_value['cookies_names'][] = 'apbct_prev_referer';
             $cookie_test_value['check_value']     .= $http_referrer;
         }
-
-        // Page hits
-        // Get
-        $page_hits = TT::toInt(RequestParameters::get('apbct_page_hits', true));
-
-        // Set / Increase
-        // todo if cookies disabled there is no way to keep this data without DB:( always will be 1
-        $page_hits = $page_hits ? $page_hits + 1 : 1;
-
-        RequestParameters::set('apbct_page_hits', TT::toString($page_hits), true);
-
-        $cookie_test_value['cookies_names'][] = 'apbct_page_hits';
-        $cookie_test_value['check_value']     .= $page_hits;
     }
 
     // Cookies test
@@ -2641,6 +2636,33 @@ function apbct_cookie()
     $apbct->flags__cookies_setuped = true;
 
     return $apbct->flags__cookies_setuped;
+}
+
+/**
+ * Store page hits. Only for native cookies mode.
+ * @return void
+ */
+function apbct_store__page_hits()
+{
+    global $apbct;
+    if (
+        ! empty($apbct->headers_sent)              // Headers sent
+    ) {
+        return;
+    }
+    if ( $apbct->data['cookies_type'] === 'native' && empty($apbct->page_hits_set) ) {
+        // Page hits
+        // Get
+        $page_hits = TT::toInt(RequestParameters::get('apbct_page_hits', true));
+
+        // Set / Increase
+        // todo if cookies disabled there is no way to keep this data without DB:( always will be 1
+        $page_hits = $page_hits ? $page_hits + 1 : 1;
+
+        RequestParameters::set('apbct_page_hits', TT::toString($page_hits), true);
+
+        $apbct->page_hits_set = true;
+    }
 }
 
 /**
@@ -2719,6 +2741,22 @@ function ct_account_status_check($api_key = null, $process_errors = true)
         $apbct->data['notice_renew']        = TT::getArrayValueAsInt($result, 'renew', 0);
         $apbct->data['notice_trial']        = TT::getArrayValueAsInt($result, 'trial', 0);
         $apbct->data['notice_review']       = TT::getArrayValueAsInt($result, 'show_review', 0);
+
+        if ($apbct->data['notice_show']) {
+            $notice_banners = API::getNoticeBanners($api_key);
+
+            if (isset($notice_banners['operation_status'], $notice_banners['banners']) && $notice_banners['operation_status'] === 'SUCCESS') {
+                if (isset($notice_banners['banners']['TRIAL']['level'])) {
+                    $apbct->data['notice_trial_level'] = strtolower($notice_banners['banners']['TRIAL']['level']);
+                }
+                if (isset($notice_banners['banners']['RENEW']['level'])) {
+                    $apbct->data['notice_renew_level'] = strtolower($notice_banners['banners']['RENEW']['level']);
+                }
+                if (isset($notice_banners['banners']['REVIEW']['level'])) {
+                    $apbct->data['notice_review_level'] = strtolower($notice_banners['banners']['REVIEW']['level']);
+                }
+            }
+        }
 
         // Other
         $apbct->data['service_id']          = TT::getArrayValueAsInt($result, 'service_id', 0);
