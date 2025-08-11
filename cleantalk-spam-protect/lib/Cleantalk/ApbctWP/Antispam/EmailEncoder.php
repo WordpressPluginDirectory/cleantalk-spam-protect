@@ -28,16 +28,24 @@ class EmailEncoder extends \Cleantalk\Antispam\EmailEncoder\EmailEncoder
     {
         global $apbct;
         $post_browser_sign = TT::toString(Post::get('browser_signature_params'));
-        $post_event_javascript_data = TT::toString(Post::get('event_javascript_data'));
         $browser_sign          = hash('sha256', $post_browser_sign);
-        $event_javascript_data = Helper::isJson($post_event_javascript_data)
-            ? $post_event_javascript_data
-            : stripslashes($post_event_javascript_data);
+
+        $event_javascript_data = '';
+        $event_token = '';
+        if ($apbct->settings['data__bot_detector_enabled'] == 1) {
+            $event_token = Post::getString('event_token');
+        } else {
+            $post_event_javascript_data = TT::toString(Post::get('event_javascript_data'));
+            $event_javascript_data = Helper::isJson($post_event_javascript_data)
+                ? $post_event_javascript_data
+                : stripslashes($post_event_javascript_data);
+        }
+
 
         $params = array(
             'auth_key'              => $apbct->api_key,        // Access key
             'agent'                 => APBCT_AGENT,
-            'event_token'           => null,                   // Unique event ID
+            'event_token'           => $event_token, // Unique event ID
             'event_javascript_data' => $event_javascript_data, // JSON-string params to analysis
             'browser_sign'          => $browser_sign,          // Browser ID
             'sender_ip'             => Helper::ipGet('real', false),        // IP address
@@ -210,9 +218,6 @@ class EmailEncoder extends \Cleantalk\Antispam\EmailEncoder\EmailEncoder
             <p class="apbct-icon-mobile" style="padding-left: 10px">%s</p>
         <p>%s</p>
         <p><a href="#apbct_setting_group__contact_data_encoding" onclick="handleAnchorDetection(\'apbct_setting_group__contact_data_encoding\')">%s</a> %s</p>
-        <p>%s</p>
-        <p><code>%s</code></p>
-        <p><code>%s</code></p>
         ';
         $tmp = sprintf(
             $tmp,
@@ -224,10 +229,7 @@ class EmailEncoder extends \Cleantalk\Antispam\EmailEncoder\EmailEncoder
             __('+1 (234) 567-8901 → +1 (***) ***-****', 'cleantalk-spam-protect'),
             __('You can also customize how emails are displayed before they are decoded by users — blurred, replaced with stars, or shown as a custom message. ', 'cleantalk-spam-protect'),
             __('Click', 'cleantalk-spam-protect'),
-            __('to proceed to encoder settings', 'cleantalk-spam-protect'),
-            __('To skip encoding of a single entity use the shortcode, any text wrapped by shortcode will be shown as origin', 'cleantalk-spam-protect'),
-            __('[apbct_skip_encoding]stop@email.com[/apbct_skip_encoding]', 'cleantalk-spam-protect'),
-            __('[apbct_skip_encoding]+11231234567[/apbct_skip_encoding]', 'cleantalk-spam-protect')
+            __('to proceed to encoder settings', 'cleantalk-spam-protect')
         );
         return $tmp;
     }

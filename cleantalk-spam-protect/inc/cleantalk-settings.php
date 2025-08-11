@@ -13,6 +13,13 @@ use Cleantalk\ApbctWP\Cron;
 use Cleantalk\ApbctWP\Variables\Server;
 use Cleantalk\Common\TT;
 use Cleantalk\ApbctWP\PluginSettingsPage\SettingsField;
+use Cleantalk\ApbctWP\ServerRequirementsChecker\ServerRequirementsChecker;
+
+// Prevent direct call
+/** @psalm-suppress ParadoxicalCondition */
+if ( ! defined('ABSPATH') ) {
+    die('Not allowed!');
+}
 
 /**
  * Admin action 'admin_menu' - Add the admin options page
@@ -248,17 +255,22 @@ function apbct_settings__set_fields()
                         'cleantalk-spam-protect'
                     ),
                 ),
-                'forms__search_test'                    => array(
-                    'title'       => __('Test default WordPress search form for spam', 'cleantalk-spam-protect'),
+                'forms__search_test' => array(
+                    'title' => __('Test default WordPress search form for spam', 'cleantalk-spam-protect'),
                     'description' =>
                         __('Spam protection for Search form.', 'cleantalk-spam-protect')
-                        //HANDLE LINK
-                        . (! $apbct->white_label || is_main_site() ?
-                            sprintf(
-                                __('Read more about %sspam protection for Search form%s on our blog. The "noindex" tag will be placed in the meta directive on the search results page.', 'cleantalk-spam-protect'),
+                        . (
+                            ! $apbct->white_label || is_main_site()
+                            ? ' ' . sprintf(
+                                __(
+                                    'Read more about %sspam protection for Search form%s on our blog. The "noindex" tag will be placed in the meta directive on the search results page.',
+                                    'cleantalk-spam-protect'
+                                ),
                                 '<a href="https://blog.cleantalk.org/how-to-protect-website-search-from-spambots/" target="_blank">',
                                 '</a>'
-                            ) : '')
+                            )
+                            : ''
+                        ),
                 ),
                 'forms__check_external'                 => array(
                     'title'       => __('Protect external forms', 'cleantalk-spam-protect'),
@@ -430,14 +442,6 @@ function apbct_settings__set_fields()
                             get_admin_url(null, 'edit-comments.php'),
                             get_admin_url(null, 'users.php')
                         ),
-                    'display'     => ! $apbct->white_label,
-                ),
-                'comments__manage_comments_on_public_page' => array(
-                    'title'       => __('Manage comments on public pages', 'cleantalk-spam-protect'),
-                    'description' => __(
-                        'Allows administrators to manage comments on public post\'s pages with small interactive menu.',
-                        'cleantalk-spam-protect'
-                    ),
                     'display'     => ! $apbct->white_label,
                 ),
             ),
@@ -1874,6 +1878,13 @@ function apbct_settings__field__apikey()
     $define_show_key_field = ! (apbct_api_key__is_correct($apbct->api_key) && isset($apbct->data["key_changed"]) && $apbct->data["key_changed"]);
     $define_show_deobfuscating_href = apbct_api_key__is_correct($apbct->api_key) && $apbct->key_is_ok && (!isset($apbct->data["key_changed"]) || !$apbct->data["key_changed"]);
 
+    $get_key_manual_chunk_display = '';
+    if (!empty($apbct->settings['apikey']) ||
+        APBCT_WPMS && !is_main_site() && $apbct->network_settings['multisite__work_mode'] == 2
+    ) {
+        $get_key_manual_chunk_display = 'style="display:none"';
+    }
+
     $replaces = [
         'wpms_admin_provided' => '',
         'key_label_display' => 'style="display:none"',
@@ -1892,7 +1903,7 @@ function apbct_settings__field__apikey()
         'get_key_auto_preloader_src' => Escape::escUrl(APBCT_URL_PATH . '/inc/images/preloader2.gif'),
         'get_key_auto_success_icon_src' => Escape::escUrl(APBCT_URL_PATH . '/inc/images/yes.png'),
         'get_key_manual_chunk' => '',
-        'get_key_manual_chunk_display' => empty($apbct->settings['apikey']) ? '' : 'style="display:none"',
+        'get_key_manual_chunk_display' => $get_key_manual_chunk_display,
         'save_changes_button_text' => __('Save the Access key', 'cleantalk-spam-protect'),
         'trying_to_set_bad_key_notice' => __('Please, insert a correct access key before saving changes! Key should contain at least 8 symbols.', 'cleantalk-spam-protect'),
         'public_offer_display' => 'style="display:none"',
@@ -1919,9 +1930,10 @@ function apbct_settings__field__apikey()
     $replaces['deobfuscating_href_display'] = $define_show_deobfuscating_href ? '' : 'style="display:none"';
 
     //ACCOUNT NAME
+    $account_name = isset($apbct->data['account_name_ob']) ? $apbct->data['account_name_ob'] : '';
     $replaces['account_name_ob'] = sprintf(
         __('Account at cleantalk.org is %s.', 'cleantalk-spam-protect'),
-        '<b>' . Escape::escHtml($apbct->data['account_name_ob']) . '</b>'
+        '<b>' . Escape::escHtml($account_name) . '</b>'
     );
     //GET KEY AUTO
     $replaces['get_key_auto_wrapper_display'] = $define_show_key_field && empty($apbct->api_key)
@@ -2006,6 +2018,10 @@ function apbct_settings__field__action_buttons()
 {
     global $apbct;
 
+    $checker = new ServerRequirementsChecker();
+    $warnings = $checker->checkRequirements() ?: [];
+    $has_requirements_warning = !empty($warnings);
+
     add_filter('apbct_settings_action_buttons', function ($buttons_array) {
         $buttons_array[] =
             '<a href="edit-comments.php?page=ct_check_spam" class="ct_support_link">'
@@ -2028,10 +2044,14 @@ function apbct_settings__field__action_buttons()
         });
     }
 
-    add_filter('apbct_settings_action_buttons', function ($buttons_array) {
+    add_filter('apbct_settings_action_buttons', function ($buttons_array) use ($has_requirements_warning) {
+        $dot = $has_requirements_warning
+            ? '<span class="apbct_warning_red_point"></span>'
+            : '';
         $buttons_array[] =
             '<a href="#" class="ct_support_link" onclick="apbctShowHideElem(\'apbct_statistics\')">'
             . __('Statistics & Reports', 'cleantalk-spam-protect')
+            . $dot
             . '</a>';
         return $buttons_array;
     });
@@ -2058,7 +2078,7 @@ function apbct_settings__field__statistics()
     global $apbct;
 
     echo '<div id="apbct_statistics" class="apbct_settings-field_wrapper" style="display: none;">';
-
+    echo '<div>';
     // Last request
     // Get the server information
     $server = isset($apbct->stats['last_request']['server']) && $apbct->stats['last_request']['server']
@@ -2203,8 +2223,44 @@ function apbct_settings__field__statistics()
             }
         }
     }
+    echo '</div>';
 
-    echo '<br/>';
+    $checker = new ServerRequirementsChecker();
+    $warnings = $checker->checkRequirements() ?: [];
+    $requirements_data = $checker->requirements;
+    $requirement_items = $checker->requirement_items;
+
+    echo '<div class="apbct_check_server_requirements">';
+    echo '<h3 style="margin: 0;">' . __('Check Server Requirements', 'cleantalk-spam-protect') . '</h3>';
+    echo '<ul style="margin-bottom:0;">';
+
+    foreach ($requirement_items as $key => $item) {
+        $value = $requirements_data[$key];
+        if ($key === 'curl_support' || $key === 'allow_url_fopen') {
+            $value = $value ? __('enabled', 'cleantalk-spam-protect') : __('disabled', 'cleantalk-spam-protect');
+        }
+        $label = sprintf(__($item['label'], 'cleantalk-spam-protect'), $value);
+
+        $warn_text = '';
+        foreach ($warnings as $warn) {
+            if (stripos($warn, $item['pattern']) !== false) {
+                $warn_text = ' <span style="color:red;">(' . esc_html($warn) . ')</span>';
+                break;
+            }
+        }
+        echo '<li' . ($warn_text ? ' style="color:red;font-weight:bold;"' : '') . '>' . $label . $warn_text . '</li>';
+    }
+    echo '</ul>';
+
+    if (!empty($warnings)) {
+        $link = LinkConstructor::buildCleanTalkLink('notice_server_requirements', 'help/system-requirements-for-anti-spam-and-security ');
+        echo sprintf(
+            '<a href="%s">%s</a>',
+            $link,
+            __('Instructions for solving the compatibility issue', 'cleantalk-spam-protect')
+        );
+    }
+    echo '</div>';
     echo '</div>';
 }
 
@@ -2800,14 +2856,16 @@ function apbct_settings__get_key_auto($direct_call = false)
             'error' => isset($result['error_message']) ? esc_html($result['error_message']) : esc_html('Our service is not available in your region.'),
         );
     } elseif ( ! isset($result['auth_key']) ) {
-        //HANDLE LINK
+        $msg = sprintf(
+            __('Please, get the Access Key from CleanTalk Control Panel %s and insert it in the Access Key field', 'cleantalk-spam-protect'),
+            'https://cleantalk.org/my/?cp_mode=antispam'
+        );
+        $apbct->errorAdd('key_get', $msg);
+        $apbct->saveErrors();
         $out = array(
             'success' => true,
             'reload'  => false,
-            'error' => sprintf(
-                __('Please, get the Access Key from CleanTalk Control Panel %s and insert it in the Access Key field', 'cleantalk-spam-protect'),
-                'https://cleantalk.org/my/?cp_mode=antispam'
-            )
+            'error' => $msg
         );
     } else {
         if ( isset($result['user_token']) ) {

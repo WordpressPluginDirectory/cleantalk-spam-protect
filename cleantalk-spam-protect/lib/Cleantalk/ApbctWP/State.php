@@ -6,6 +6,7 @@ use AllowDynamicProperties;
 use ArrayObject;
 use Cleantalk\ApbctWP\FindSpam\LoginIPKeeper;
 use Cleantalk\ApbctWP\Firewall\SFWUpdateSentinel;
+use Cleantalk\ApbctWP\ServiceConstants;
 
 /**
  * CleanTalk Anti-Spam State class
@@ -73,7 +74,6 @@ class State extends \Cleantalk\Common\State
         'comments__remove_old_spam'                => 0,
         'comments__remove_comments_links'          => 0, // Remove links from approved comments
         'comments__show_check_links'               => 1, // Shows check link to Cleantalk's DB.
-        'comments__manage_comments_on_public_page' => 0, // Allows to control comments on public page.
         'comments__the_real_person'                => 0, // Shows badge on each approved by cloud comments on public page.
         'comments__hide_website_field'             => 0, // Hide website field from comment form
 
@@ -387,6 +387,10 @@ class State extends \Cleantalk\Common\State
       * @var LoginIPKeeper
       */
     public $login_ip_keeper;
+     /**
+      * @var ServiceConstants
+      */
+    public $service_constants;
 
     private $auto_save_defaults_list = array();
 
@@ -529,6 +533,8 @@ class State extends \Cleantalk\Common\State
             // Limit for firewall logs sending.
             define('APBCT_SFW_SEND_LOGS_LIMIT', 1000);
         }
+
+        $this->service_constants = new ServiceConstants();
     }
 
     protected function setOptions()

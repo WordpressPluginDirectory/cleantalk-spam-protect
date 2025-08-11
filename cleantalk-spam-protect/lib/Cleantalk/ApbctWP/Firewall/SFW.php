@@ -127,7 +127,8 @@ class SFW extends \Cleantalk\Common\Firewall\FirewallModule
 
         if (
             empty($this->db__table__data) ||
-            empty($this->db__table__data_personal)
+            empty($this->db__table__data_personal) ||
+            !$this->db->tablesExist(array($this->db__table__data_personal, $this->db__table__data)) //skip if any of SFW tables missed
         ) {
             return $results;
         }
@@ -537,6 +538,7 @@ class SFW extends \Cleantalk\Common\Firewall\FirewallModule
             'data__email_check_before_post' => $apbct->settings['data__email_check_before_post'],
             'data__cookies_type'            => $apbct->data['cookies_type'],
             'data__visible_fields_required' => ! apbct_is_user_logged_in() || $apbct->settings['data__protect_logged_in'] == 1,
+            'settings__data__bot_detector_enabled' => $apbct->settings['data__bot_detector_enabled'],
         );
 
         $replaces = array(

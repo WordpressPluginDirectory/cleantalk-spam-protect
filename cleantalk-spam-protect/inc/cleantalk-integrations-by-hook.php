@@ -1,5 +1,10 @@
 <?php
 
+// Prevent direct call
+if ( ! defined('ABSPATH') ) {
+    die('Not allowed!');
+}
+
 $apbct_active_integrations = array(
     'CleantalkInternalForms'         => array(
         'hook'    => 'ct_check_internal',
@@ -419,6 +424,24 @@ $apbct_active_integrations = array(
         'hook'    => 'xoo_el_form_action',
         'setting' => 'forms__registrations_test',
         'ajax'    => true
+    ),
+    'QuickCal'         => array(
+        'hook'    => 'booked_add_appt',
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => true
+    ),
+    'RegistrationMagic'         => array(
+        'hook'    => 'rm_validate_before_form_submit',
+        'setting' => 'forms__registrations_test',
+        'ajax'    => false
+    ),
+    'AsgarosForum'         => array(
+        'hook'    => array(
+            'asgarosforum_filter_before_topic_submit',
+            'asgarosforum_filter_before_post_submit',
+        ),
+        'setting' => 'forms__contact_forms_test',
+        'ajax'    => false
     ),
 );
 

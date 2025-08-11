@@ -503,6 +503,7 @@ class AntiCrawler extends \Cleantalk\Common\Firewall\FirewallModule
             'data__email_check_before_post' => $apbct->settings['data__email_check_before_post'],
             'data__cookies_type'            => $apbct->data['cookies_type'],
             'data__visible_fields_required' => ! apbct_is_user_logged_in() || $apbct->settings['data__protect_logged_in'] == 1,
+            'settings__data__bot_detector_enabled' => $apbct->settings['data__bot_detector_enabled'],
         );
 
         $replaces = array(
@@ -526,6 +527,7 @@ class AntiCrawler extends \Cleantalk\Common\Firewall\FirewallModule
 
     private function checkExclusions()
     {
+        global $apbct;
         /**
          * Check if W3 Total Cache minified files requested during Anti-Crawler Work.
          * All the next conditions should be true:
@@ -555,7 +557,7 @@ class AntiCrawler extends \Cleantalk\Common\Firewall\FirewallModule
         }
 
         // skip for RSS Feed requests
-        if (defined('APBCT_ANTICRAWLER_EXLC_FEED')) {
+        if ($apbct->service_constants->skip_anticrawler_on_rss_feed->isDefined()) {
             if (Server::getString('REQUEST_URI') &&
                 preg_match_all('/feed/i', Server::getString('REQUEST_URI'))
             ) {

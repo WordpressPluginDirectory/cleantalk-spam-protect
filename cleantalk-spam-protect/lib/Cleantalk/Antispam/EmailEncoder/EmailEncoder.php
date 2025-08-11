@@ -24,7 +24,7 @@ class EmailEncoder
     /**
      * @var string[]
      */
-    public $decoded_emails_array;
+    public $decoded_emails_array = array();
     /**
      * @var string[]
      */
@@ -97,6 +97,10 @@ class EmailEncoder
 
         $this->encoder = new Encoder(md5($apbct->api_key));
 
+        if (apbct_is_user_logged_in()) {
+            $this->ignoreOpenSSLMode();
+        }
+
         if ( $this->exclusions->doSkipBeforeAnything() ) {
             return;
         }
@@ -104,7 +108,6 @@ class EmailEncoder
         $this->shortcodes->registerAll();
         $this->shortcodes->addActionsAfterModify('the_content', 11);
         $this->shortcodes->addActionsAfterModify('the_title', 11);
-        // add_action('the_title', array($this->shortcodes->exclude, 'clearTitleContentFromShortcodeConstruction'), 12);
 
         $this->registerHookHandler();
 
@@ -386,9 +389,9 @@ class EmailEncoder
      *
      * @return string
      */
-    public function modifyAny($string)
+    public function modifyAny($string, $mode = 'blur', $replacing_text = null)
     {
-        $encoded_string = $this->encodeAny($string);
+        $encoded_string = $this->encodeAny($string, $mode, $replacing_text);
 
         //please keep this var (do not simplify the code) for further debug
         return $encoded_string;
@@ -732,7 +735,7 @@ class EmailEncoder
 
         // use non ssl mode for logged in user on settings page
         if ( apbct_is_user_logged_in() ) {
-            $this->decoded_emails_array = $this->ignoreOpenSSLMode()->decodeEmailFromPost();
+            $this->decoded_emails_array = $this->decodeEmailFromPost();
             $this->response = $this->compileResponse($this->decoded_emails_array, true);
             wp_send_json_success($this->response);
         }
@@ -821,7 +824,7 @@ class EmailEncoder
      */
     private function registerHookHandler()
     {
-        add_filter('apbct_encode_data', [$this, 'modifyAny']);
+        add_filter('apbct_encode_data', [$this, 'modifyAny'], 10, 3);
         add_filter('apbct_encode_email_data', [$this, 'modifyContent']);
     }
 

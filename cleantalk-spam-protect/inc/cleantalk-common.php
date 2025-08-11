@@ -21,6 +21,11 @@ use Cleantalk\ApbctWP\Variables\Server;
 use Cleantalk\ApbctWP\RequestParameters\RequestParameters;
 use Cleantalk\Common\TT;
 
+// Prevent direct call
+if ( ! defined('ABSPATH') ) {
+    die('Not allowed!');
+}
+
 function apbct_array($array)
 {
     return new \Cleantalk\Common\Arr($array);
@@ -151,6 +156,7 @@ function apbct_base_call($params = array(), $reg_flag = false)
     if (
         isset($apbct->plugin_request_ids[ $apbct->plugin_request_id ]) &&
         current_filter() !== 'woocommerce_registration_errors' && // Prevent skip checking woocommerce registration during checkout
+        current_filter() !== 'woocommerce_store_api_checkout_order_processed' && // Prevent skip checking woocommerce registration during checkout
         current_filter() !== 'um_submit_form_register' // Prevent skip checking UltimateMember register
     ) {
         do_action('apbct_skipped_request', __FILE__ . ' -> ' . __FUNCTION__ . '():' . __LINE__, $_POST);
@@ -204,10 +210,6 @@ function apbct_base_call($params = array(), $reg_flag = false)
         $default_params['sender_info']['typo'] = Cookie::get('typo');
     }
 
-    if (RequestParameters::get('collecting_user_activity_data')) {
-        $default_params['sender_info']['collecting_user_activity_data'] = RequestParameters::get('collecting_user_activity_data');
-    }
-
     /**
      * Add exception_action sender email is empty
      */
@@ -221,7 +223,21 @@ function apbct_base_call($params = array(), $reg_flag = false)
         ! apbct_is_trackback() &&
         ! defined('XMLRPC_REQUEST')
     ) {
-        $params['exception_action'] = 1;
+        /**
+         * If the constant APBCT_SERVICE__DISABLE_EMPTY_EMAIL_EXCEPTION is defined,
+         * it means that the exception action should be disabled for empty email checks.
+         *
+         * Check all post data option ignore this constant.
+         * @since 6.58.99
+         */
+        if (
+            $apbct->service_constants->disable_empty_email_exception->isDefined() &&
+            !$apbct->settings['data__general_postdata_test']
+        ) {
+            $params['exception_action'] = 0;
+        } else {
+            $params['exception_action'] = 1;
+        }
     }
     /**
      * Skip checking excepted requests if the "Log excluded requests" option is disabled.
@@ -410,11 +426,16 @@ function apbct_exclusions_check__url()
             $exclusions = explode(',', $apbct->settings['exclusions__urls']);
         }
 
+        $rest_url_only_path = apbct_get_rest_url_only_path();
         // Fix for AJAX and WP REST API forms
         $haystack =
             (
                 Server::get('REQUEST_URI') === '/wp-admin/admin-ajax.php' ||
-                stripos(TT::toString(Server::get('REQUEST_URI')), '/wp-json/') === 0
+                stripos(TT::toString(Server::getString('REQUEST_URI')), '/wp-json/') === 0 ||
+                (
+                    $rest_url_only_path !== 'index.php' &&
+                    stripos(TT::toString(Server::getString('REQUEST_URI')), $rest_url_only_path) === 0
+                )
             ) &&
             TT::toString(Server::get('HTTP_REFERER'))
             ? str_ireplace(
@@ -540,7 +561,14 @@ function apbct_get_sender_info()
     $cache_plugins_detected = json_encode($cache_plugins_detected);
 
     $apbct_urls = RequestParameters::getCommonStorage('apbct_urls');
-    $apbct_urls = $apbct_urls ? json_encode(json_decode($apbct_urls, true)) : null;
+    if (!empty($apbct_urls)) {
+        if (is_string($apbct_urls)) {
+            $apbct_urls = json_encode(json_decode($apbct_urls, true));
+        } else {
+            $apbct_urls = json_encode($apbct_urls);
+        }
+    }
+    $apbct_urls = !empty($apbct_urls) ? $apbct_urls : null;
 
     $site_landing_ts = RequestParameters::get('apbct_site_landing_ts', true);
     $site_landing_ts = !empty($site_landing_ts) ? TT::toString($site_landing_ts) : null;
@@ -1633,11 +1661,9 @@ function apbct_clear_superglobal_service_data($superglobal, $type)
 
     switch ($type) {
         case 'post':
-            //Magnesium Quiz special $_request clearance
-            if (
-                (
-                apbct_is_plugin_active('magnesium-quiz/magnesium-quiz.php')
-                )
+            // Magnesium Quiz special $_request clearance || Uni CPO
+            if ((apbct_is_plugin_active('magnesium-quiz/magnesium-quiz.php')) ||
+                (apbct_is_plugin_active('uni-woo-custom-product-options/uni-cpo.php'))
             ) {
                 $fields_to_clear[] = 'ct_bot_detector_event_token';
                 $fields_to_clear[] = 'ct_no_cookie_hidden_field';
@@ -1648,12 +1674,14 @@ function apbct_clear_superglobal_service_data($superglobal, $type)
             break;
         case 'request':
             //Optima Express special $_request clearance
-            if (
-                (
-                    apbct_is_plugin_active('optima-express/iHomefinder.php')
-                )
-            ) {
+            if ((apbct_is_plugin_active('optima-express/iHomefinder.php'))) {
                 $fields_to_clear[] = 'ct_no_cookie_hidden_field';
+            }
+            if ((apbct_is_plugin_active('uni-woo-custom-product-options/uni-cpo.php'))) {
+                $fields_to_clear[] = 'ct_bot_detector_event_token';
+                $fields_to_clear[] = 'ct_no_cookie_hidden_field';
+                $fields_to_clear[] = 'apbct_event_id';
+                $fields_to_clear[] = 'apbct__email_id';
             }
             break;
     }
