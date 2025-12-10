@@ -813,10 +813,6 @@ class SFW extends \Cleantalk\Common\Firewall\FirewallModule
     {
         global $wpdb, $apbct;
 
-        if ($apbct->data['sfw_load_type'] === 'all') {
-            $db__table__data = $apbct->data['sfw_personal_table_name'] . '_temp';
-        }
-
         $query = 'INSERT INTO `' . $db__table__data . '` (network, mask, status) VALUES ';
 
         //Exclusion for servers IP (SERVER_ADDR)
@@ -861,16 +857,16 @@ class SFW extends \Cleantalk\Common\Firewall\FirewallModule
      * Creating a temporary updating table
      *
      * @param DB $db database handler
-     * @param array|string $table_names Array with table names to create
+     * @param array|string $origin_table_names Array with table names to create
      *
      * @return bool|array
      */
-    public static function createTempTables($db, $table_names)
+    public static function createTempTables($db, $origin_table_names)
     {
         // Cast it to array for simple input
-        $table_names = (array)$table_names;
+        $origin_table_names = (array)$origin_table_names;
 
-        foreach ($table_names as $table_name) {
+        foreach ($origin_table_names as $table_name) {
             if ( !$db->isTableExists($table_name) ) {
                 continue;
             }
@@ -1054,6 +1050,9 @@ class SFW extends \Cleantalk\Common\Firewall\FirewallModule
         );
     }
 
+    /**
+     * @return array|false
+     */
     public static function getSFWTablesNames()
     {
         global $apbct;

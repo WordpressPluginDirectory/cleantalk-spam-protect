@@ -719,6 +719,9 @@ function apbct_is_skip_request($ajax = false, $ajax_message_obj = array())
             'wpcommunity_auth_login', // WPCommunity login
             'submit_nex_form', // NEXForms has direct integration
             'rnoc_track_user_data', // service request
+            'fl_builder_subscribe_form_submit', // FLBuilderForms has direct integration
+            'tutor_pro_social_authentication', // Tutor Pro social authentication, we trust a third-party service
+            'drplus_login', // Doctor Plus theme login
         );
 
         // Skip test if
@@ -1041,7 +1044,7 @@ function apbct_is_skip_request($ajax = false, $ajax_message_obj = array())
         // GiveWP - having the direct integration
         if (
             (apbct_is_plugin_active('give/give.php') &&
-            TT::toString(Post::get('action')) === 'give_process_donation')
+             Post::getString('action') === 'give_process_donation')
         ) {
             return 'GiveWP';
         }
@@ -1629,6 +1632,40 @@ function apbct_is_skip_request($ajax = false, $ajax_message_obj = array())
         ) {
             return 'Fluent Booking Pro skip';
         }
+
+        // Gwolle Guestbook have the direct integration
+        if (
+            apbct_is_plugin_active('gwolle-gb/gwolle-gb.php') &&
+            Post::getString('action') === 'gwolle_gb_form_ajax' &&
+            Post::getString('gwolle_gb_function') === 'add_entry'
+        ) {
+            return 'Gwolle Guestbook';
+        }
+
+        // Newsletter Automated skip testing newsletter from admins
+        if (
+            apbct_is_plugin_active('newsletter-automated/automated.php') &&
+            Post::getString('action') === 'tnpc_test'
+        ) {
+            return 'Newsletter Automated skip';
+        }
+
+        if (
+            apbct_is_plugin_active('woo-mailerlite/woo-mailerlite.php') &&
+            (
+                Post::getString('action') === 'save_data' ||
+                Post::getString('action') === 'woo_mailerlite_set_cart_email'
+            )
+        ) {
+            return 'woo_mailerlite service request';
+        }
+
+        if (
+            apbct_is_plugin_active('spoki/spoki.php') &&
+            Post::equal('action', 'spoki_cartflows_save_cart_abandonment_data')
+        ) {
+            return 'spoki_abandoned_card_for_woocommerce';
+        }
     } else {
         /*****************************************/
         /*  Here is non-ajax requests skipping   */
@@ -1864,6 +1901,11 @@ function apbct_is_skip_request($ajax = false, $ajax_message_obj = array())
             return 'Plugin Name: SureForms skip fields checks';
         }
 
+        // Plugin Name: WPRecipeMaker
+        if ( apbct_is_plugin_active('wp-recipe-maker-premium/wp-recipe-maker-premium.php') && apbct_is_in_uri('/wp-recipe-maker/v1/user-rating/')) {
+            return 'Plugin Name: WPRecipeMaker skip fields checks';
+        }
+
         // skip AsgarosForum - has direct integration
         if (
             apbct_is_plugin_active('asgaros-forum/asgaros-forum.php') &&
@@ -1940,6 +1982,14 @@ function apbct_is_skip_request($ajax = false, $ajax_message_obj = array())
         Post::get('form_data')
     ) {
         return 'Otter Blocks';
+    }
+
+    // Nex Forms have the direct integration
+    if (
+        apbct_is_plugin_active('nex-forms/main.php') &&
+        Post::get('action') === 'submit_nex_form'
+    ) {
+        return 'Nex Forms';
     }
 
     return false;

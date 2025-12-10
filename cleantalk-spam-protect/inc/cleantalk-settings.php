@@ -3,7 +3,7 @@
 use Cleantalk\ApbctWP\AdjustToEnvironmentModule\AdjustToEnvironmentHandler;
 use Cleantalk\ApbctWP\AdjustToEnvironmentModule\AdjustToEnvironmentSettings;
 use Cleantalk\ApbctWP\AJAXService;
-use Cleantalk\ApbctWP\Antispam\EmailEncoder;
+use Cleantalk\ApbctWP\ContactsEncoder\ContactsEncoder;
 use Cleantalk\ApbctWP\Escape;
 use Cleantalk\ApbctWP\Helper;
 use Cleantalk\ApbctWP\LinkConstructor;
@@ -11,6 +11,7 @@ use Cleantalk\ApbctWP\Validate;
 use Cleantalk\ApbctWP\Variables\Post;
 use Cleantalk\ApbctWP\Cron;
 use Cleantalk\ApbctWP\Variables\Server;
+use Cleantalk\Common\ContactsEncoder\Dto\Params;
 use Cleantalk\Common\TT;
 use Cleantalk\ApbctWP\PluginSettingsPage\SettingsField;
 use Cleantalk\ApbctWP\PluginSettingsPage\SummaryAndSupportRenderer;
@@ -50,7 +51,7 @@ function apbct_settings_add_page()
     // Add CleanTalk Moderation option to the Discussion page
     add_settings_field(
         'cleantalk_allowed_moderation',
-        esc_html__('CleanTalk allowed comments moderation', 'cleantalk-spam-protect'),
+        esc_html__('CleanTalk Comment Moderation', 'cleantalk-spam-protect'),
         'apbct_discussion_settings__field__moderation',
         'discussion'
     );
@@ -58,6 +59,15 @@ function apbct_settings_add_page()
         $options['discussion'][] = 'cleantalk_allowed_moderation';
         return $options;
     });
+    add_action('update_option_cleantalk_allowed_moderation', function ($old_value, $value) {
+        global $apbct;
+
+        $filtered = ($value === '1' || $value === 1) ? '1' : '0';
+        if ($old_value !== $filtered) {
+            $apbct->settings['cleantalk_allowed_moderation'] = $filtered;
+            $apbct->saveSettings();
+        }
+    }, 10, 2);
     // End modification Discussion page
 
     if ( ! in_array($pagenow, array('options.php', 'options-general.php', 'settings.php', 'admin.php')) ) {
@@ -175,7 +185,8 @@ function apbct_settings__set_fields()
                 ),
                 'comments__the_real_person' => array(
                     'type'        => 'checkbox',
-                    'title'       => __('The Real Person Badge!', 'cleantalk-spam-protect'),
+                    'title' => __('The Real Person Badge!', 'cleantalk-spam-protect')
+                    . ' <img src="' . esc_attr(APBCT_URL_PATH . '/css/images/real_user.svg') . '" class="apbct-real-user-popup-img"/>',
                     'description' => __(
                         'Plugin shows special benchmark for author of a comment or review, that the author passed all anti-spam filters and acts as a real person. It improves quality of users generated content on your website by proving that the content is not from spambots.',
                         'cleantalk-spam-protect'
@@ -382,6 +393,13 @@ function apbct_settings__set_fields()
             'title'  => __('Comments and Messages', 'cleantalk-spam-protect'),
             'section' => 'hidden_section',
             'fields' => array(
+                'cleantalk_allowed_moderation' => array(
+                    'title' => __('CleanTalk Comment Moderation', 'cleantalk-spam-protect'),
+                    'description' => __(
+                        'Skip manual approving for the very first comment if a comment has been allowed by CleanTalk Anti-Spam protection.',
+                        'cleantalk-spam-protect'
+                    )
+                ),
                 'comments__disable_comments__all'          => array(
                     'title'       => __('Disable all comments', 'cleantalk-spam-protect'),
                     'description' => __('Disabling comments for all types of content.', 'cleantalk-spam-protect'),
@@ -631,7 +649,7 @@ function apbct_settings__set_fields()
                 ),
                 'data__email_check_exist_post'        => array(
                     'title'       => __('Show email existence alert when filling in the field', 'cleantalk-spam-protect'),
-                    'description' => __('Checks the email address and shows the result as an icon in the email field before submitting the form. Works for WooCommerce checkout form, FluentForms, standard WordPress comment form and registration form.', 'cleantalk-spam-protect'),
+                    'description' => __('Checks the email address and shows the result as an icon in the email field before submitting the form. Works for WooCommerce checkout form, FluentForms, Contact Form 7, standard WordPress comment form and registration form.', 'cleantalk-spam-protect'),
                 ),
             ),
         ),
@@ -643,7 +661,7 @@ function apbct_settings__set_fields()
             'fields' => array(
                 'data__email_decoder'        => array(
                     'title' => __('Encode contact data', 'cleantalk-spam-protect'),
-                    'description' => EmailEncoder::getEncoderOptionDescription(),
+                    'description' => ContactsEncoder::getEncoderOptionDescription(),
                     'childrens' => array(
                         'data__email_decoder_buffer',
                         'data__email_decoder_obfuscation_mode',
@@ -655,37 +673,37 @@ function apbct_settings__set_fields()
                 ),
                 'data__email_decoder_encode_email_addresses'        => array(
                     'title' => __('Encode email addresses', 'cleantalk-spam-protect'),
-                    'description' => EmailEncoder::getEmailsEncodingDescription(),
+                    'description' => ContactsEncoder::getEmailsEncodingDescription(),
                     'class'           => 'apbct_settings-field_wrapper--sub',
                     'parent'            => 'data__email_decoder',
                 ),
                 'data__email_decoder_encode_phone_numbers'        => array(
                     'title' => __('Encode phone numbers', 'cleantalk-spam-protect'),
-                    'description' => EmailEncoder::getPhonesEncodingDescription(),
+                    'description' => ContactsEncoder::getPhonesEncodingDescription(),
                     'class'           => 'apbct_settings-field_wrapper--sub',
                     'parent'            => 'data__email_decoder',
                     'long_description' => true,
                 ),
                 'data__email_decoder_obfuscation_mode'        => array(
                     'title'             => __('Encoder obfuscation mode', 'cleantalk-spam-protect'),
-                    'description'       => EmailEncoder::getObfuscationModesDescription(),
+                    'description'       => ContactsEncoder::getObfuscationModesDescription(),
                     'parent'            => 'data__email_decoder',
                     'class'             => 'apbct_settings-field_wrapper--sub',
-                    'options'  => EmailEncoder::getObfuscationModesOptionsArray(),
+                    'options'  => ContactsEncoder::getObfuscationModesOptionsArray(),
                     'childrens' => array('data__email_decoder_obfuscation_custom_text'),
                     'long_description' => true,
                 ),
                 'data__email_decoder_obfuscation_custom_text'             => array(
                     'type'        => 'textarea',
                     'title'       => __('Custom text to replace email', 'cleantalk-spam-protect'),
-                    'value' => EmailEncoder::getDefaultReplacingText(),
+                    'value' => ContactsEncoder::getDefaultReplacingText(),
                     'description'       => __('If appropriate mode selected, this text will be shown instead of an email.', 'cleantalk-spam-protect'),
                     'parent' => 'data__email_decoder_obfuscation_mode',
                     'class' => 'apbct_settings-field_wrapper--sub',
                 ),
                 'data__email_decoder_buffer'        => array(
                     'title'       => __('Use the output buffer', 'cleantalk-spam-protect'),
-                    'description' => EmailEncoder::getBufferUsageOptionDescription(),
+                    'description' => ContactsEncoder::getBufferUsageOptionDescription(),
                     'parent'          => 'data__email_decoder',
                     'class'           => 'apbct_settings-field_wrapper--sub',
                 ),
@@ -1343,7 +1361,8 @@ function apbct_settings__display()
             // CP button
             //HANDLE LINK
             echo '<a class="cleantalk_link cleantalk_link-manual" target="__blank" href="https://cleantalk.org/my?user_token=' . Escape::escHtml($apbct->user_token) . '&cp_mode=antispam">'
-                 . __('Click here to get Anti-Spam statistics', 'cleantalk-spam-protect')
+                 . __('Cloud Dashboard', 'cleantalk-spam-protect')
+                 . '<img style="margin-left: 7px; margin-top:7px;" src="' . APBCT_URL_PATH . "/inc/images/new_window.gif" . '">'
                  . '</a>';
         }
     }
@@ -1355,8 +1374,8 @@ function apbct_settings__display()
         // Sync button
         if ( (apbct_api_key__is_correct($apbct->api_key) && $apbct->key_is_ok) || apbct__is_hosting_license() ) {
             echo '<button type="button" class="cleantalk_link cleantalk_link-auto" id="apbct_button__sync" title="' . esc_html__('Synchronizing account status, SpamFireWall database, all kind of journals', 'cleantalk-spam-protect') . '">'
+                . __('Sync with the Cloud', 'cleantalk-spam-protect')
                 . '<i class="apbct-icon-upload-cloud"></i>'
-                . __('Synchronize with Cloud', 'cleantalk-spam-protect')
                 . '<img style="margin-left: 10px;" class="apbct_preloader_button" src="' . Escape::escUrl(APBCT_URL_PATH . '/inc/images/preloader2.gif') . '" />'
                 . '<img style="margin-left: 10px;" class="apbct_success --hide" src="' . Escape::escUrl(APBCT_URL_PATH . '/inc/images/yes.png') . '" />'
                 . '</button>';
@@ -1950,20 +1969,23 @@ function apbct_settings__field__apikey()
     $replaces['get_key_auto_button_display'] = !$apbct->ip_license ? '' : 'style="display:none"';
 
     //GET KEY MANUAL CHUNK
-    $register_link = LinkConstructor::buildCleanTalkLink('get_access_key_link', 'wordpress-anti-spam-plugin');
+    $register_link = LinkConstructor::buildCleanTalkLink(
+        'get_access_key_link',
+        'register',
+        array(
+            'platform' => 'wordpress',
+            'product_name' => 'antispam',
+            'email' => ct_get_admin_email(),
+            'website' => get_bloginfo('url')
+        )
+    );
     $link_template = __(
         'The admin email %s %s will be used to obtain a key and as the email for signing up at CleanTalk.org.',
         'cleantalk-spam-protect'
     );
     $link_template .= '<br>';
     $link_template .= __('As a backup, use the %sCleanTalk Dashboard%s to copy and paste your key.', 'cleantalk-spam-protect');
-    $href = '<a class="apbct_color--gray" target="__blank" id="apbct-key-manually-link" href="'
-            . sprintf(
-                $register_link . '&platform=wordpress&email=%s&website=%s',
-                urlencode(ct_get_admin_email()),
-                urlencode(get_bloginfo('url'))
-            )
-            . '">';
+    $href = '<a class="apbct_color--gray" target="__blank" id="apbct-key-manually-link" href="' . $register_link . '">';
     $replaces['get_key_manual_chunk'] = sprintf(
         $link_template,
         '<span id="apbct-account-email">' . ct_get_admin_email() . '</span>',
@@ -2071,15 +2093,17 @@ function apbct_settings__field__statistics()
 
 function apbct_discussion_settings__field__moderation()
 {
+    global $apbct;
+
     $output  = '<label for="cleantalk_allowed_moderation">';
     $output .= '<input 
                 type="checkbox" 
                 name="cleantalk_allowed_moderation" 
                 id="cleantalk_allowed_moderation" 
                 value="1" ' .
-                checked('1', get_option('cleantalk_allowed_moderation', 1), false) .
+                checked('1', $apbct->settings['cleantalk_allowed_moderation'], false) .
                 '/> ';
-    $output .= esc_html__('Skip manual approving for the very first comment if a comment has been allowed by CleanTalk Anti-Spam protection', 'cleantalk-spam-protect');
+    $output .= esc_html__('Skip manual approving for the very first comment if a comment has been allowed by CleanTalk Anti-Spam protection.', 'cleantalk-spam-protect');
     $output .= '</label>';
     echo $output;
 }
@@ -2443,11 +2467,11 @@ function apbct_settings__validate($settings)
     //email encoder obfuscation custom text validation
     if (
             isset($settings['data__email_decoder_obfuscation_mode'])
-            && $settings['data__email_decoder_obfuscation_mode'] === 'replace'
+            && $settings['data__email_decoder_obfuscation_mode'] === Params::OBFUSCATION_MODE_REPLACE
     ) {
         if (empty($settings['data__email_decoder_obfuscation_custom_text'])) {
             $apbct->errorDelete('email_encoder', true, 'settings_validate');
-            $settings['data__email_decoder_obfuscation_custom_text'] = EmailEncoder::getDefaultReplacingText();
+            $settings['data__email_decoder_obfuscation_custom_text'] = ContactsEncoder::getDefaultReplacingText();
             $apbct->errorAdd(
                 'email_encoder',
                 'custom text can not be empty, default value applied.',
@@ -2459,7 +2483,7 @@ function apbct_settings__validate($settings)
         }
     } else {
         $apbct->errorDelete('email_encoder', true, 'settings_validate');
-        $settings['data__email_decoder_obfuscation_custom_text'] = EmailEncoder::getDefaultReplacingText();
+        $settings['data__email_decoder_obfuscation_custom_text'] = ContactsEncoder::getDefaultReplacingText();
     }
 
     /**
@@ -2909,7 +2933,8 @@ function apbct_settings__get__long_description()
             'title' => __('The Real Person Badge!', 'cleantalk-spam-protect'),
             //HANDLE LINK
             'desc'  => sprintf(
-                __('Plugin shows special benchmark for author of a comment or review, that the author passed all anti-spam filters and acts as a real person. It improves quality of users generated content on your website by proving that the content is not from spambots. %s', 'cleantalk-spam-protect'),
+                '<p>' . __('Plugin shows special benchmark for author of a comment or review, that the author passed all anti-spam filters and acts as a real person. It improves quality of users generated content on your website by proving that the content is not from spambots. %s', 'cleantalk-spam-protect') . '</p>' .
+                '<p>' . __('Benchmark is visible only for automatically approved comments. Make sure the option "Advanced settings → CleanTalk Comment Moderation" is turned on, and "WP Dashboard → Settings → Discussion → Comment must be manually approved" is turned off', 'cleantalk-spam-protect') . '</p>',
                 '<a href="' . esc_attr(LinkConstructor::buildCleanTalkLink('trp_learn_more_link', 'the-real-person')) . '" target="_blank">' . __('Learn more.', 'cleantalk-spam-protect') . '</a>'
             )
         ),
@@ -3004,20 +3029,24 @@ function apbct_settings__get__long_description()
         ),
         'data__email_decoder_obfuscation_mode' => array(
             'title' => __('Contact data encoding: obfuscation modes', 'cleantalk-spam-protect'),
-            'desc'  => EmailEncoder::getObfuscationModesLongDescription(),
+            'desc'  => ContactsEncoder::getObfuscationModesLongDescription(),
         ),
         'data__email_decoder_encode_phone_numbers' => array(
             'title' => __('Contact data encoding: phone numbers', 'cleantalk-spam-protect'),
-            'desc'  => EmailEncoder::getPhonesEncodingLongDescription(),
+            'desc'  => ContactsEncoder::getPhonesEncodingLongDescription(),
         ),
         'data__email_decoder' => array(
             'title' => __('Contact data encoding', 'cleantalk-spam-protect'),
-            'desc'  => EmailEncoder::getEmailEncoderCommonLongDescription(),
+            'desc'  => ContactsEncoder::getEmailEncoderCommonLongDescription(),
         ),
     );
 
     if (!empty($setting_id) && isset($descriptions[$setting_id])) {
-        $utm = '?utm_source=apbct_hint_' . esc_attr($setting_id) . '&utm_medium=WordPress&utm_campaign=ABPCT_Settings';
+        if ($setting_id === 'comments__hide_website_field') {
+            $utm = '?utm_source=apbct_hint_' . esc_attr($setting_id) . '&utm_medium=hide_website_field_hint&utm_campaign=apbct_links';
+        } else {
+            $utm = '?utm_source=apbct_hint_' . esc_attr($setting_id) . '&utm_medium=WordPress&utm_campaign=ABPCT_Settings';
+        }
         $descriptions[$setting_id]['desc'] = str_replace('{utm_mark}', $utm, $descriptions[$setting_id]['desc']);
         die(json_encode($descriptions[$setting_id]));
     } else {

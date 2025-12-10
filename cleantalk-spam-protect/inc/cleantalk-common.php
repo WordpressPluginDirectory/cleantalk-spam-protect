@@ -701,7 +701,7 @@ function apbct_get_pixel_url($direct_call = false)
         . Helper::timeGetIntervalStart(3600 * 3) // Unique for every 3 hours
     );
 
-    //get params for caсhe plugins exclusion detection
+    //get params for cache plugins exclusion detection
     $cache_plugins_detected = apbct_is_cache_plugins_exists(true);
     $cache_exclusion_snippet = '';
     if ( !empty($cache_plugins_detected) ) {
@@ -1318,7 +1318,10 @@ function apbct__change_type_website_field($fields)
     global $apbct;
 
     if ( isset($apbct->settings['comments__hide_website_field']) && $apbct->settings['comments__hide_website_field'] ) {
-        if ( isset($fields['url']) && $fields['url'] ) {
+        if (
+            !empty($fields['url']) &&
+            strpos($fields['url'], 'input id=') !== false
+        ) {
             $fields['url'] = '<input id="honeypot-field-url" style="display: none;" autocomplete="off" name="url" type="text" value="" size="30" maxlength="200" />';
         }
         $theme = wp_get_theme();
@@ -1664,8 +1667,10 @@ function apbct_clear_superglobal_service_data($superglobal, $type)
     switch ($type) {
         case 'post':
             // Magnesium Quiz special $_request clearance || Uni CPO
-            if ((apbct_is_plugin_active('magnesium-quiz/magnesium-quiz.php')) ||
-                (apbct_is_plugin_active('uni-woo-custom-product-options/uni-cpo.php'))
+            if (
+                (apbct_is_plugin_active('magnesium-quiz/magnesium-quiz.php')) ||
+                (apbct_is_plugin_active('uni-woo-custom-product-options/uni-cpo.php')) ||
+                (apbct_is_plugin_active('nex-forms/main.php'))
             ) {
                 $fields_to_clear[] = 'ct_bot_detector_event_token';
                 $fields_to_clear[] = 'ct_no_cookie_hidden_field';
@@ -1676,10 +1681,10 @@ function apbct_clear_superglobal_service_data($superglobal, $type)
             break;
         case 'request':
             //Optima Express special $_request clearance
-            if ((apbct_is_plugin_active('optima-express/iHomefinder.php'))) {
+            if ( (apbct_is_plugin_active('optima-express/iHomefinder.php')) ) {
                 $fields_to_clear[] = 'ct_no_cookie_hidden_field';
             }
-            if ((apbct_is_plugin_active('uni-woo-custom-product-options/uni-cpo.php'))) {
+            if ( (apbct_is_plugin_active('uni-woo-custom-product-options/uni-cpo.php')) ) {
                 $fields_to_clear[] = 'ct_bot_detector_event_token';
                 $fields_to_clear[] = 'ct_no_cookie_hidden_field';
                 $fields_to_clear[] = 'apbct_event_id';
@@ -1756,16 +1761,19 @@ function apbct_is_amp_request()
  */
 function apbct_get_event_token($params)
 {
-    $event_token_from_request = ! empty(Post::get('ct_bot_detector_event_token'))
-        ? Post::get('ct_bot_detector_event_token')
-        : Cookie::get('ct_bot_detector_event_token');
-    $event_token_from_params = ! empty($params['event_token'])
-        ? $params['event_token']
-        : '';
+    global $ct_rest_middleware_event_token;
 
-    return  $event_token_from_params
-        ? TT::toString($event_token_from_params)
-        : TT::toString($event_token_from_request);
+    if (!empty($params['event_token'])) {
+        return TT::toString($params['event_token']);
+    }
+
+    if (isset($ct_rest_middleware_event_token) && !empty($ct_rest_middleware_event_token)) {
+        return TT::toString($ct_rest_middleware_event_token);
+    }
+
+    return !empty(Post::getString('ct_bot_detector_event_token'))
+        ? Post::getString('ct_bot_detector_event_token')
+        : Cookie::getString('ct_bot_detector_event_token');
 }
 
 /**

@@ -2,9 +2,9 @@
 Contributors: glomberg, alexandergull, sergefcleantalk, antonv1
 Tags: antispam, comments, contact form, captcha, spam
 Requires at least: 4.7
-Tested up to: 6.8
+Tested up to: 6.9
 Requires PHP: 5.6
-Stable tag: 6.66
+Stable tag: 6.69.2
 License: GPLv2
 
 Blocks spam comments, fake users, contact form spam and more. No impact on SEO. Privacy focused. CAPTCHA free, premium Antispam plugin.
@@ -411,6 +411,76 @@ Yes, it is. Please read this article,
 8. Prevent any other spamers, from any other forms, for example from WPForms.
 
 == Changelog ==
+
+= 6.69.2  09.12.2025 =
+Fix. Contact Data Encoder. Fixed deprecation notice.
+Fix. Contact Data Encoder. Frontend. Fixed connection errors handling.
+
+= 6.69.1  08.12.2025 =
+Fix. Integrations. Update Woo add to cart check.
+
+= 6.69 04.12.2025 =
+New. WPRecipeMaker. Integration with WP Recipe Maker
+Upd. Code. ContactsEncoder module refactoring.
+Upd. ContactEncoder. Improve UX.
+Upd. TRP. Restart show badge on woo review page.
+Upd. WCAddToCart. Processing and adding event_token to the request
+Upd. Integrations. JS. Dynamic rendered form interval clearance on window load custom events.
+Upd. EmailEncoder. Added new format to encode phone numbers.
+Mod. CheckEmailExist. Integration of Check Email Exist with Ninja Forms
+Mod. WPRecipeMaker. Editing the blocking message
+Fix. Bot detector. Set event_token for the different cookies types fixed.
+Fix. Integration. Ninja Forms refactored - no using force_alt_cookies.
+Fix. Integration. Fluentbook. Added public scripts echoing on author landing visit.
+Fix. Integrations. JS. Run dynamic forms catching on interval.
+Fix. Woocommerce. Exclusion for WC Stripe Apple Pay frontend request.
+Fix. Integration. Brick theme ajax response fixed.
+Fix. Integration. FunnelKit. Funnel builder action added.
+Fix. WPMS. Getting and recreating personal tables on WPMS.
+Fix. OptiPress. Editing the integration in passing the message parameter
+Fix. WPRecipeMaker. Combining logic under one condition
+Fix. Helper. Correcting the error of using 'static' in string callables inside array_map since version 8.2
+Fix. FluentForm. The verification depends on the data__protect_logged_in and is_user_logged_in() options
+Github. New action to create assets from dev/fix on push event.
+
+= 6.68 13.11.2025 =
+New. Integration. Ultimate affiliate plugin (Codecanyon).
+New. Integration. Gwolle Guestbook integration implemented.
+Upd. Integrations. Improved capability with perfmatters.
+Upd. Settings. Improved UX.
+Upd. Email Encoder. Try to decode in both ways ssl/str_base.
+Fix. ContactEncoder. Editing duplicate pages due to buffer interception.
+Fix. Code. Unit text TestRequirementsChecker refactored.
+Fix. Integration. WPForo. Catch email and nickname via native WPF object. Get message from input.
+Fix. Integrations. Nex-forms POST clearance from service fields after check.
+Fix. Protection by fake button. Sender.net forms ignored, preparing for the next iteration.
+Fix. Integrations. GiveWP. Partially protected Give REST submission.
+Code. Unused code removed.
+Mod. TRP. TRP edits, duplicate the cleantalk_allowed_moderation option and move it to settings.
+
+= 6.67 30.10.2025 =
+New. AdminBanner. Separation of banners about an empty and invalid key
+New. AdminBanner. Editing logic for a banner about an incorrect key
+Fix. ContactEncoder. Revert svg content.
+Fix. Integrations. Prevent spam requests to third-party services.
+Fix. Integrations. Added Beaver Builder.
+Fix. Integrations. Improved gathering data for fluentbooking pro.
+Fix. OptimizePress. Registration process protected.
+Fix. Integration. WP Booking System integration fixed.
+New. Integration. Doctor Plus theme registration and login.
+Fix. Integration. WPForms. Fixed missed request on non-emtpty WPForm form errors array.
+Fix. Hide website field. Forced condition to replace via honeypot.
+Upd. Server Requirements Checker. Added curl_multi_exec to the check-list.
+New. Email exists check. Implemented for CF7. (#669)
+Upd. Settings. Updated access key link parameters for improved registration process.
+Fix. Settings. Typo (system requirements) fixed.
+Fix. Settings. Complete deactivation fixed.
+Fix. State. Default `fw_stats` fixed.
+Fix. SFW. SFW updating (process exclusions) fixed.
+Fix. Exclusion. Newsletter Automation. Skip test newsletter check.
+Fix. Integration. btQuoteBooking form params gathering fixed.
+Fix. Integration. WP Mailer Lite. Fixed exclusion.
+
 
 = 6.66 16.10.2025 =
 Fix. Remote calls. Debug RC now hide sensitive data.
