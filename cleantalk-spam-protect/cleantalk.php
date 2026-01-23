@@ -4,7 +4,7 @@
   Plugin Name: Anti-Spam by CleanTalk
   Plugin URI: https://cleantalk.org
   Description: Max power, all-in-one, no Captcha, premium anti-spam plugin. No comment spam, no registration spam, no contact spam, protects any WordPress forms.
-  Version: 6.69.2
+  Version: 6.71
   Author: CleanTalk - Anti-Spam Protection <welcome@cleantalk.org>
   Author URI: https://cleantalk.org
   Text Domain: cleantalk-spam-protect
@@ -29,6 +29,7 @@ use Cleantalk\ApbctWP\Firewall\AntiFlood;
 use Cleantalk\ApbctWP\Firewall\SFW;
 use Cleantalk\ApbctWP\Firewall\SFWUpdateHelper;
 use Cleantalk\ApbctWP\Helper;
+use Cleantalk\ApbctWP\Promotions\GF2DBPromotion;
 use Cleantalk\ApbctWP\RemoteCalls;
 use Cleantalk\ApbctWP\RequestParameters\RequestParameters;
 use Cleantalk\ApbctWP\RequestParameters\SubmitTimeHandler;
@@ -271,6 +272,10 @@ apbct_update_actions();
 
 add_action('init', function () {
     global $apbct;
+
+    //promotions
+    $promotion_gf2db = new GF2DBPromotion();
+    $promotion_gf2db->init();
 
     // Self cron
     $ct_cron = Cron::getInstance();
@@ -603,7 +608,18 @@ add_action('mec_booking_end_form_step_2', function () {
 
 // Public actions
 if ( ! is_admin() && ! apbct_is_ajax() && ! apbct_is_customize_preview() ) {
-    if (apbct_is_plugin_active('fluentformpro/fluentformpro.php') && apbct_is_in_uri('ff_landing=')) {
+    if (
+        apbct_is_plugin_active('fluentformpro/fluentformpro.php') &&
+        (
+            apbct_is_in_uri('ff_landing=') ||
+            (
+                // Load scripts for logged in users if constant is defined
+                apbct_is_user_logged_in() &&
+                (defined('APBCT_FF_JS_SCRIPTS_LOAD') &&
+                APBCT_FF_JS_SCRIPTS_LOAD == true)
+            )
+        )
+    ) {
         add_action('wp_head', function () {
             echo '<script data-pagespeed-no-defer="" src="'
                 . APBCT_URL_PATH
@@ -1111,13 +1127,10 @@ function apbct_sfw_update__init($delay = 0)
         return false;
     }
 
-    // The Access key is empty
-    if ( ! $apbct->api_key && ! $apbct->ip_license ) {
-        return array('error' => 'SFW UPDATE INIT: KEY_IS_EMPTY');
-    }
+    $requirements_check = apply_filters('apbct_sfw_update__check_requirements', apbct_sfw_update__check_requirements());
 
-    if ( ! $apbct->data['key_is_ok'] ) {
-        return array('error' => 'SFW UPDATE INIT: KEY_IS_NOT_VALID');
+    if (true !== $requirements_check) {
+        return array('error' => $requirements_check);
     }
 
     // Get update period for server
@@ -1200,6 +1213,38 @@ function apbct_sfw_update__init($delay = 0)
         ),
         array('async')
     );
+}
+
+/**
+ * Precheck server requirements before SFW update started.
+ * @return string|true True if check passed, first error string otherwise.
+ */
+function apbct_sfw_update__check_requirements()
+{
+    global $apbct;
+    $result = true;
+    try {
+        // The Access key is empty
+        if ( ! $apbct->api_key && ! $apbct->ip_license ) {
+            throw new \Exception('KEY_IS_EMPTY');
+        }
+
+        if ( ! $apbct->data['key_is_ok'] ) {
+            throw new \Exception('KEY_IS_NOT_VALID');
+        }
+
+        $requirements_checker = new Cleantalk\ApbctWP\ServerRequirementsChecker\ServerRequirementsChecker();
+
+        $curl_multi_ok = $requirements_checker->getRequiredParameterValue('curl_multi_funcs_array');
+
+        if (!$curl_multi_ok) {
+            throw new \Exception('CURL MULTI FUNCTIONS NOT AVAILABLE');
+        }
+    } catch (\Exception $e) {
+        $result = 'SFW UPDATE INIT: ' . $e->getMessage();
+    }
+
+    return $result;
 }
 
 /**
@@ -1504,6 +1549,20 @@ function apbct_sfw_update__download_files($urls, $direct_update = false)
 
     $results = array();
     $batch_size = 10;
+
+    /**
+     * Reduce batch size of curl multi instanced
+     */
+    if (defined('APBCT_SERVICE__SFW_UPDATE_CURL_MULTI_BATCH_SIZE')) {
+        if (
+            is_int(APBCT_SERVICE__SFW_UPDATE_CURL_MULTI_BATCH_SIZE) &&
+            APBCT_SERVICE__SFW_UPDATE_CURL_MULTI_BATCH_SIZE > 0 &&
+            APBCT_SERVICE__SFW_UPDATE_CURL_MULTI_BATCH_SIZE < 10
+        ) {
+            $batch_size = APBCT_SERVICE__SFW_UPDATE_CURL_MULTI_BATCH_SIZE;
+        };
+    }
+
     $total_urls = count($urls);
     $batches = ceil($total_urls / $batch_size);
 
