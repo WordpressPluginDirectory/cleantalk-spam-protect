@@ -10,7 +10,6 @@ use Cleantalk\ApbctWP\Variables\Get;
 use Cleantalk\ApbctWP\Variables\Server;
 use Cleantalk\Common\TT;
 use AllowDynamicProperties;
-use Cleantalk\ApbctWP\ApbctJsBundleResolver;
 
 #[AllowDynamicProperties]
 class SFW extends \Cleantalk\Common\Firewall\FirewallModule
@@ -377,7 +376,7 @@ class SFW extends \Cleantalk\Common\Firewall\FirewallModule
                 CLEANTALK_PLUGIN_DIR . "lib/Cleantalk/ApbctWP/Firewall/die_page_sfw.html"
             );
 
-            $js_url = ApbctJsBundleResolver::getFullScriptURI($apbct->settings);
+            $js_url = APBCT_URL_PATH . '/js/apbct-public-bundle.min.js?' . APBCT_VERSION;
 
             $net_count = $apbct->stats['sfw']['entries'];
 

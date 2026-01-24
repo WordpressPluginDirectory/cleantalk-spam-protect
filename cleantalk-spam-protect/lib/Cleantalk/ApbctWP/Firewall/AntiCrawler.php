@@ -10,7 +10,6 @@ use Cleantalk\ApbctWP\Variables\Cookie;
 use Cleantalk\ApbctWP\Variables\Get;
 use Cleantalk\ApbctWP\Variables\Server;
 use Cleantalk\Common\TT;
-use Cleantalk\ApbctWP\ApbctJsBundleResolver;
 
 /**
  * Class AntiCrawler
@@ -414,7 +413,7 @@ class AntiCrawler extends \Cleantalk\Common\Firewall\FirewallModule
                 CLEANTALK_PLUGIN_DIR . "lib/Cleantalk/ApbctWP/Firewall/die_page_anticrawler.html"
             );
 
-            $js_url = ApbctJsBundleResolver::getFullScriptURI($apbct->settings);
+            $js_url = APBCT_URL_PATH . '/js/apbct-public-bundle.min.js?' . APBCT_VERSION;
 
             $net_count = $apbct->stats['sfw']['entries'];
 

@@ -10,15 +10,8 @@ class ServerRequirementsChecker
         'allow_url_fopen' => true,
         'memory_limit' => '128M',
         'max_execution_time' => 30,
-        'curl_multi_funcs_array' => true,
+        'curl_multi_exec' => true,
     ];
-
-    public $curl_multi_funcs_array = array(
-        'curl_multi_exec',
-        'curl_multi_init',
-        'curl_multi_getcontent',
-        'curl_multi_add_handle',
-    );
 
     public $requirement_items = [
         'php_version' => [
@@ -41,9 +34,9 @@ class ServerRequirementsChecker
             'label' => 'max_execution_time: %s+ seconds',
             'pattern' => 'max_execution_time',
         ],
-        'curl_multi_funcs_array' => [
-            'label' => 'cURL multi-request functions: %s',
-            'pattern' => 'At least one of cURL multiple request',
+        'curl_multi_exec' => [
+            'label' => 'curl_multi_exec: %s',
+            'pattern' => 'curl_multi_exec',
         ],
     ];
 
@@ -51,42 +44,22 @@ class ServerRequirementsChecker
 
     /**
      * This wrapper allow to generate a mock for the testing
-     * @param string|string[] $function_names
+     * @param string $functionName
      * @return bool
      */
-    protected function functionsExist($function_names)
+    protected function isFunctionExists($functionName)
     {
-        if ( is_string($function_names)) {
-            $function_names = array($function_names);
-        }
-
-        foreach ( $function_names as $function) {
-            if (!function_exists($function)) {
-                return false;
-            }
-        }
-        return true;
+        return function_exists($functionName);
     }
 
     /**
      * This wrapper allow to generate a mock for the testing
-     *
-     * @param string|string[] $function_names
-     *
+     * @param string $functionName
      * @return bool
      */
-    protected function functionsCallable($function_names)
+    protected function isCallable($functionName)
     {
-        if ( is_string($function_names)) {
-            $function_names = array($function_names);
-        }
-
-        foreach ( $function_names as $function) {
-            if (!is_callable($function)) {
-                return false;
-            }
-        }
-        return true;
+        return is_callable($functionName);
     }
 
     /**
@@ -113,15 +86,15 @@ class ServerRequirementsChecker
                 case 'php_version':
                     return PHP_VERSION;
                 case 'curl_support':
-                    return $this->functionsExist('curl_version');
+                    return $this->isFunctionExists('curl_version');
                 case 'allow_url_fopen':
                     return $this->getIniValue('allow_url_fopen');
                 case 'memory_limit':
                     return $this->getIniValue('memory_limit');
                 case 'max_execution_time':
                     return $this->getIniValue('max_execution_time');
-                case 'curl_multi_funcs_array':
-                    return $this->functionsExist($this->curl_multi_funcs_array) && $this->functionsCallable($this->curl_multi_funcs_array);
+                case 'curl_multi_exec':
+                    return $this->isFunctionExists('curl_multi_exec') && $this->isCallable('curl_multi_exec');
             }
         }
     }
@@ -176,10 +149,8 @@ class ServerRequirementsChecker
             );
         }
 
-        if ( ! $this->getRequiredParameterValue('curl_multi_funcs_array') ) {
-            $funcs_list = esc_html(implode(', ', $this->curl_multi_funcs_array));
-            $template = __('At least one of cURL multiple request functions (%s) is not available, but required for SpamFireWall features', 'cleantalk-spam-protect');
-            $this->warnings[] = sprintf($template, $funcs_list);
+        if ( ! $this->getRequiredParameterValue('curl_multi_exec') ) {
+            $this->warnings[] = __('function \'curl_multi_exec\' is not available, but required for SpamFireWall features', 'cleantalk-spam-protect');
         }
 
         if (empty($this->warnings)) {

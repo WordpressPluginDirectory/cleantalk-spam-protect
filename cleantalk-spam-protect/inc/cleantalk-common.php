@@ -427,54 +427,39 @@ function apbct_exclusions_check__url()
             $exclusions = explode(',', $apbct->settings['exclusions__urls']);
         }
 
-        //default haystack is request_uri
-        $url_haystack = Server::getString('REQUEST_URI');
-
-        /**
-         * Fix for AJAX and WP REST API forms
-         */
-        // case for admin-ajax routes, may contain get params(!)
-        $is_admin_ajax_like = stripos(Server::getString('REQUEST_URI'), '/wp-admin/admin-ajax.php') === 0;
-        // case for wp-json paths
-        $is_wp_json_like = stripos(Server::getString('REQUEST_URI'), '/wp-json/') === 0;
-        // case for rest paths
         $rest_url_only_path = apbct_get_rest_url_only_path();
-        $is_rest_only_path =  $rest_url_only_path !== 'index.php' && stripos(Server::getString('REQUEST_URI'), $rest_url_only_path) === 0;
-
-        // if need to use http referrer as haystack
-        $do_use_http_referrer = (
-            Server::getString('HTTP_REFERER')  &&
+        // Fix for AJAX and WP REST API forms
+        $haystack =
             (
-                $is_admin_ajax_like ||
-                $is_wp_json_like ||
-                $is_rest_only_path
-            )
-        );
-
-        // do combine actions from referrer if so
-        if ($do_use_http_referrer) {
-            $url_haystack = str_ireplace(
+                Server::get('REQUEST_URI') === '/wp-admin/admin-ajax.php' ||
+                stripos(TT::toString(Server::getString('REQUEST_URI')), '/wp-json/') === 0 ||
+                (
+                    $rest_url_only_path !== 'index.php' &&
+                    stripos(TT::toString(Server::getString('REQUEST_URI')), $rest_url_only_path) === 0
+                )
+            ) &&
+            TT::toString(Server::get('HTTP_REFERER'))
+            ? str_ireplace(
                 array('http://', 'https://', strval(TT::toString(Server::get('HTTP_HOST')))),
                 '',
-                Server::getString('HTTP_REFERER')
-            );
-        }
+                TT::toString(Server::get('HTTP_REFERER'))
+            )
+            : TT::toString(Server::get('REQUEST_URI'));
 
-        // if exclusions is full-url like, modify haystack to being full-url also
         if ( $apbct->data['check_exclusion_as_url'] ) {
             $protocol = ! in_array(Server::get('HTTPS'), ['off', '']) || Server::get('SERVER_PORT') == 443 ? 'https://' : 'http://';
-            $url_haystack = $protocol . TT::toString(Server::get('SERVER_NAME')) . TT::toString($url_haystack);
+            $haystack = $protocol . TT::toString(Server::get('SERVER_NAME')) . TT::toString($haystack);
         }
 
-        $url_haystack = TT::toString($url_haystack);
+        $haystack = TT::toString($haystack);
 
         foreach ( $exclusions as $exclusion ) {
             if (
                 (
                     $apbct->settings['exclusions__urls__use_regexp'] &&
-                    preg_match('@' . $exclusion . '@', $url_haystack) === 1
+                    preg_match('@' . $exclusion . '@', $haystack) === 1
                 ) ||
-                stripos($url_haystack, $exclusion) !== false
+                stripos($haystack, $exclusion) !== false
             ) {
                 return true;
             }
