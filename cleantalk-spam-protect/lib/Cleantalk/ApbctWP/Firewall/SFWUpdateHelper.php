@@ -6,6 +6,7 @@ use Cleantalk\ApbctWP\API;
 use Cleantalk\ApbctWP\Cron;
 use Cleantalk\ApbctWP\DB;
 use Cleantalk\ApbctWP\Helper;
+use Cleantalk\ApbctWP\State;
 use Cleantalk\Common\TT;
 
 class SFWUpdateHelper
@@ -55,14 +56,18 @@ class SFWUpdateHelper
      */
     public static function processUA($file_path)
     {
-        $result = AntiCrawler::update($file_path);
+        if (empty($file_path) || ! file_exists($file_path) ) {
+            return array('error' => 'UPDATING UA LIST: ' . $file_path . ' does not exist.');
+        }
 
-        if ( ! empty($result['error']) ) {
+        $result = AntiCrawler::updateUADataTable($file_path);
+
+        if ( is_array($result) && ! empty($result['error']) ) {
             return array('error' => 'UPDATING UA LIST: ' . $result['error']);
         }
 
         if ( ! is_int($result) ) {
-            return array('error' => 'UPDATING UA LIST: : WRONG_RESPONSE AntiCrawler::update');
+            return array('error' => 'UPDATING UA LIST: : WRONG_RESPONSE AntiCrawler::updateUADataTable');
         }
 
         return $result;
@@ -189,15 +194,10 @@ class SFWUpdateHelper
         global $apbct;
 
         if ( $sfw_load_type === 'all' ) {
-            //common table delete
-            $result_deletion = SFW::dataTablesDelete(DB::getInstance(), $apbct->data['sfw_common_table_name']);
-            if ( !empty($result_deletion['error']) ) {
-                throw new \Exception('SFW_COMMON_TABLE_DELETION_ERROR');
-            }
-            //common table rename
-            $result_renaming = SFW::renameDataTablesFromTempToMain(DB::getInstance(), $apbct->data['sfw_common_table_name']);
-            if ( !empty($result_renaming['error']) ) {
-                throw new \Exception('SFW_COMMON_TABLE_RENAME_ERROR');
+            //common table delete and rename in one transaction
+            $result = SFW::replaceDataTablesAtomically(DB::getInstance(), $apbct->data['sfw_common_table_name']);
+            if ( !empty($result['error']) ) {
+                throw new \Exception('SFW_COMMON_TABLE_ATOMIC_RENAME_ERROR: ' . $result['error']);
             }
 
             //personal table delete
@@ -222,15 +222,10 @@ class SFWUpdateHelper
                 throw new \Exception('SFW_PERSONAL_TABLE_RENAME_ERROR');
             }
         } elseif ( $sfw_load_type === 'common' ) {
-            //common table delete
-            $result_deletion = SFW::dataTablesDelete(DB::getInstance(), $apbct->data['sfw_common_table_name']);
-            if ( !empty($result_deletion['error']) ) {
-                throw new \Exception('SFW_COMMON_TABLE_DELETION_ERROR');
-            }
-            //common table rename
-            $result_renaming = SFW::renameDataTablesFromTempToMain(DB::getInstance(), $apbct->data['sfw_common_table_name']);
-            if ( !empty($result_renaming['error']) ) {
-                throw new \Exception('SFW_COMMON_TABLE_RENAME_ERROR');
+             //common table delete and rename in one transaction
+            $result = SFW::replaceDataTablesAtomically(DB::getInstance(), $apbct->data['sfw_common_table_name']);
+            if ( !empty($result['error']) ) {
+                throw new \Exception('SFW_COMMON_TABLE_ATOMIC_RENAME_ERROR: ' . $result['error']);
             }
         }
     }
@@ -602,5 +597,51 @@ class SFWUpdateHelper
             : $work_batch_size;
 
         return $work_batch_size;
+    }
+
+    /**
+     * @param State $apbct
+     * @return bool
+     */
+    public static function SFWDataOutdated($apbct)
+    {
+        if (isset($apbct->stats['sfw']['last_update_time'], $apbct->stats['sfw']['update_period'])) {
+            return (TT::toInt($apbct->stats['sfw']['last_update_time']) + (TT::toInt($apbct->stats['sfw']['update_period']) * 3)) < time();
+        }
+        return false;
+    }
+
+    /**
+     * Chek if SFW in update mode.
+     * @param State $apbct
+     * @return bool
+     */
+    public static function SFWUpdateModeEnabled($apbct)
+    {
+        return isset($apbct->fw_stats['update_mode']) && TT::toInt($apbct->fw_stats['update_mode']) === 1;
+    }
+
+    /**
+     * Handle outdated error. Uses 'misc__send_connection_reports' settings to manage.
+     * @param State $apbct
+     * @return void
+     */
+    public static function processSFWOutdatedError($apbct)
+    {
+        $show_error =
+            $apbct->settings['sfw__enabled'] &&
+            self::SFWDataOutdated($apbct) &&
+            $apbct->settings['misc__send_connection_reports']; // business decision
+
+        add_action('init', function () use ($apbct, $show_error) {
+            $apbct->errorToggle(
+                $show_error,
+                'sfw_outdated',
+                esc_html__(
+                    'SpamFireWall database is outdated. Please, try to synchronize with the cloud.',
+                    'cleantalk-spam-protect'
+                )
+            );
+        });
     }
 }
